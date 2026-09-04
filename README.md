@@ -1,86 +1,79 @@
-# SimpShare — 网页分享卡片浏览器扩展
+# SimpShare — 浏览器扩展
 
-一键为当前网页生成 **21:9 分享卡片**：站点图标 + 标题、内容封面（或二维码）、简介、
-链接二维码，复制到剪贴板即可粘贴到微信 / QQ / 笔记中分享。
+在网页里生成 21:9 分享卡片的 Chrome / Edge 扩展（Manifest V3，要求 Chrome 111+）。
+点开页面上的分享按钮，卡片就地生成：站点图标、标题、封面、简介、链接二维码，
+复制后直接贴给别人。界面和卡片都跟随系统的深色 / 浅色模式。
 
-Chrome / Edge（Chromium 内核）**Manifest V3** 扩展，最低要求 Chrome 111+。
-浅蓝 Material 3 视觉，UI 与卡片配色自动跟随浏览器深色 / 浅色模式。
+SimpShare 还有 [Android 版](https://github.com/nekoslio/SimpShare/tree/android)：
+在任意应用里点"分享"选 SimpShare，生成同款卡片。两端共用一份规则文件。
 
-![预览](docs/screenshots/card-bilibili-dark.png)
+![B 站视频分享卡片（深色）](docs/screenshots/card-bilibili-dark.png)
+
+B 站链接会按内置规则改写成镜像域名（`bilibili.com/video/BV…` →
+`bilibilibb.com/video/BV…`），短链 `b23.tv` 同理，卡片上的二维码跟着一起改，
+右下角的"已改写"标记说明这张卡的链接被动过；抓标题封面仍用原始链接。
 
 ## 安装
 
-1. 打开 `chrome://extensions`（Edge 为 `edge://extensions`）
-2. 打开右上角**开发者模式**
-3. 点击**加载已解压的扩展程序**，选择本仓库根目录（含 `manifest.json` 的文件夹）
-4. 固定到工具栏即可，全部交互在页面内完成
+从 [Releases](https://github.com/nekoslio/SimpShare/releases) 下载
+`simpshare-1.0.1.zip` 并解压，打开 `chrome://extensions`（Edge 是
+`edge://extensions`），打开右上角**开发者模式**，点**加载已解压的扩展程序**，
+选中解压出的文件夹，最后固定到工具栏。
 
-也可以从 [Releases](https://github.com/nekoslio/SimpShare/releases) 下载 `simpshare-x.y.z.zip`，
-解压后按上述步骤加载解压出的文件夹。
+`simpshare-1.0.1.crx` 是带签名的打包产物，供企业策略部署使用。新版 Chrome
+不允许直接拖入安装非商店扩展，拖入会报 `CRX_REQUIRED_PROOF_MISSING`，
+这是浏览器限制，不是包坏了。
 
 ## 使用
 
-| 操作 | 说明 |
+页面右侧有一个悬浮分享按钮。按住可以拖动，贴到屏幕左右边缘会吸附成一条窄边，
+悬停展开、点击还原，位置会被记住。点按钮打开面板：
+
+- **复制图片**：按 2100×900 高清重新渲染并写入剪贴板（预览是 1050×450）
+- **修改链接**：填一个新链接回车，按新链接重新抓取生成
+
+| 浅色 | 深色 |
 | --- | --- |
-| 右上角分享按钮 | 点击打开分享面板 |
-| 按住拖动 | 拖到屏幕最左 / 最右边缘自动吸附成小长条；悬停长条变宽出现箭头，点击恢复 |
-| 复制图片 | 以高清版（2100×900）重新生成并写入剪贴板 |
-| 修改链接 | 展开输入框，回车或点确认按钮提交，按新链接重新生成预览 |
+| ![浅色面板](docs/screenshots/panel-light.png) | ![深色面板](docs/screenshots/panel-dark.png) |
 
-## 分享卡片样式
+## 卡片长什么样
 
-```
-┌────────────────────────────────────────────────────┐
-│ [站点图标]  页面标题（加粗放大，超长省略）               │
-│                                                    │
-│ ┌────────────┐  简介（视频简介 / 歌手·专辑 /   ┌────┐ │
-│ │  封面图     │  网页描述，自动换行省略）        │ 二 │ │
-│ │  (自适应)   │                              │ 维 │ │
-│ └────────────┘                              │ 码 │ │
-│                                             └────┘ │
-│              https://…（右下角 URL 标注，末端距边 48）  │
-└────────────────────────────────────────────────────┘
-```
+规则内站点出内容封面，右下角是链接二维码：
 
-- 规则内站点：展示内容封面（视频封面 / 歌曲封面 / 项目社交卡片），右下角为链接二维码
-- 规则外站点或封面提取失败：封面位置改为链接二维码，右下角二维码取消，简介不变
-- URL 标注：以链接文本末端（右下角顶点）距右 / 下边缘各 48 的固定距离为锚点右对齐；
-  链接过长会与其他控件冲突时，自动改显示"url过长，请扫描二维码"
-- GitHub 特例：官方社交卡片自带简介文字，因此不裁切封面、不绘制简介模块
-- 二维码含 4 模块静区、纠错级别 M；预览为 1050×450，复制时以 2100×900 重新渲染
-
-## 站点适配与复核结论
-
-重点站点已通过真实扩展端到端测试（提取、封面下载、卡片渲染全链路）：
-
-| 站点 | 提取方式 |
+| GitHub 仓库 | 网易云音乐 |
 | --- | --- |
-| bilibili.com（/video/BV…） | 页面内嵌状态 `__INITIAL_STATE__.videoData`：标题 / UP主 / 简介 / 原始封面 |
-| music.163.com（/song?id=…） | 同源 Web API `/api/song/detail`：歌名 / 歌手 / 专辑 / 专辑图，另支持 album、playlist |
-| github.com（/owner/repo） | og: 元信息；标题取 URL 的 `owner/repo`，简介去样板句 |
+| ![GitHub 卡片](docs/screenshots/card-github-light.png) | ![网易云卡片](docs/screenshots/card-netease-light.png) |
 
-其余规则内站点逐站复核结果（封面均取自 og: 元信息，已用真实浏览器逐页验证，
-并用 `node tools/review-sites.js` 验证封面直链可下载性）：
+不在规则内的站点自动读页面 meta：取到 `og:image` 就拿它当封面（比如 arXiv），
+取不到就整体退回二维码模式，标题简介照常，卡片不会破版。
 
-| 站点 | 结论 | 说明 |
-| --- | --- | --- |
-| YouTube、腾讯视频、优酷 | 通过 | og:image 封面；优酷规则兼容新版 `video?vid=` 链接 |
-| Vimeo、Spotify、SoundCloud | 通过 | og:image |
-| 微信公众号文章、知乎专栏、豆瓣条目 | 通过 | og:image；豆瓣图片有 Referer 防盗链，插件自动携带来源页 Referer |
-| 掘金、Twitch、arXiv | 通过 | og:image 为官方 logo（站点未提供内容封面时的行为） |
-| CSDN、少数派、简书、思否 | 通过 | og:image 正常 |
-| GitLab、npm、PyPI、Stack Overflow、Steam | 通过 | og 可用；npm 与 Stack Overflow 对自动化访问有风控，真实浏览器正常 |
-| 知乎问答、V2EX、B站直播 | 降级 | 无 og:image，标题可提取，自动转为二维码模式 |
-| 爱奇艺、QQ音乐、酷狗 | 降级 | og:image 缺失（纯客户端渲染），标题与简介仍可提取 |
-| 抖音、微博、小红书 | 受限 | 登录墙或风控；真实浏览器登录后一般有 og，未登录自动降级 |
+![未适配站点（arXiv）](docs/screenshots/card-unmatched-og.png)
 
-降级是设计行为：封面拿不到时自动改为二维码模式，卡片不会破版。
-封面抓取由后台 service worker 完成，并携带来源页 Referer 以通过防盗链。
+几个绘制细节：GitHub 的官方社交卡片自带文字，所以不裁封面、不另绘简介；
+URL 标注锚定在卡片右下角，链接长到会挤压其他元素时改显示"URL 过长，请扫描二维码"；
+二维码纠错级别 M，四周留 4 模块静区。
 
-## 规则订阅文件（GKD 风格）
+## 站点适配
 
-站点规则全部声明在 `src/rules/rules.json`（规则是数据，主体是引擎），
-由 `src/lib/rules.js` 的通用解释器执行——新增或修改站点不需要改任何 JS 代码。
+内置 32 条站点规则（`rules.json` v5）。重点站点走精确提取：
+
+- **bilibili**：读页面内嵌状态 `__INITIAL_STATE__.videoData`，拿标题、UP主、简介、原始封面
+- **网易云音乐**：走同源 Web API `/api/song/detail`，拿歌名、歌手、专辑、封面（专辑页、歌单页也支持）
+- **GitHub**：og 元信息，标题取 `owner/repo`，简介去掉样板句
+
+其余规则内站点读 og 元信息。逐站用真实浏览器复核过：YouTube、腾讯视频、优酷、
+Vimeo、Spotify、微信公众号文章、知乎专栏、豆瓣、掘金、CSDN、少数派、GitLab、npm、
+Stack Overflow、Steam 等都能正常出封面，豆瓣的图片防盗链由后台携带来源页 Referer
+解决。知乎问答、V2EX、B 站直播不提供 `og:image`，爱奇艺、QQ音乐是纯客户端渲染
+拿不到 og，这些站点会自动降级二维码模式；微博、小红书、抖音有登录墙，未登录时
+大概率降级，登录后正常。
+
+降级不是坏掉：封面拿不到就换成二维码模式，功能照常。
+
+## 规则订阅文件
+
+规则全部声明在 `src/rules/rules.json`，GKD 风格的声明式 JSON，由 `src/lib/rules.js`
+的通用解释器执行——加站点、改提取逻辑只需要改这份文件，不用碰 JS：
 
 ```jsonc
 {
@@ -109,19 +102,19 @@ Chrome / Edge（Chromium 内核）**Manifest V3** 扩展，最低要求 Chrome 1
 }
 ```
 
-| 能力 | 说明 |
+| 字段 | 作用 |
 | --- | --- |
-| `match` / `matchAny` | hosts（后缀匹配）+ `path` 正则 + `pathExclude` + `query` 参数 + `pathSource: "pathAndHash"`（兼容 `#/song?id=` 哈希路由） |
+| `match` / `matchAny` | hosts（后缀匹配）+ `path` 正则 + `pathExclude` + `query` 参数；`pathSource: "pathAndHash"` 兼容 `#/song?id=` 这类哈希路由 |
 | `extract.og` | head `<meta>` 元信息兜底（og: → twitter: → itemprop） |
-| `extract.state` | 页面全局对象按 JSON 路径提取：`a.b.0.c`、`thumbnails[-1]`（末元素）、`artists[*].name`（通配收集） |
-| 模板 | `{路径}` 取值，修饰符 `|join '分隔符'`、`|fallback 路径`、`|clip 160`；占位符取不到值时整行丢弃 |
+| `extract.state` | 页面全局对象按 JSON 路径取值：`a.b.0.c`、`thumbnails[-1]`（末元素）、`artists[*].name`（通配收集） |
+| 模板 | `{路径}` 取值，修饰符 `|join '分隔符'`、`|fallback 路径`、`|clip 160`；取不到值的占位行整行丢弃 |
 | `extract.api` | 声明式 Web API：URL 模板 `{id}`（query/hash 取参）+ 多分支 `whenPath` + JSON 路径字段映射 |
 | `transforms` | `stripRegex`、`forceHttps`、`appendQuery`；`titleFromPath` 从 URL 捕获组组装标题 |
 | `card` | 传给渲染器：`containCover`（封面不裁切）、`hideDesc`（不绘制简介） |
-| `redirect.rules` | 正则改写：`match`/`replace` 把分享卡片与二维码展示的 URL 改写为干净形式（如 `bilibili.com/video/BV..` → `bilibilibb.com/video/BV..`），`unmatch`/`unreplace` 提交/编辑时反向映射回源 URL 以匹配规则；目标站点自行去除追踪参数 |
+| `redirect.rules` | 链接改写：`match`/`replace` 把卡片与二维码上的 URL 改写为镜像域名，`unmatch`/`unreplace` 在"修改链接"提交时反向还原成源站 URL 再匹配规则 |
 
-未适配站点：`behavior.ogForUnmatchedSites: true` 时，不在规则内的站点也会读取 `<head>`
-的 `<meta>` 标签获取封面，取到即用封面模式，取不到则降级二维码模式。
+未适配站点也可以出卡片：`behavior.ogForUnmatchedSites: true` 时读 head meta，
+取到封面用封面模式，取不到退二维码模式。
 
 ## 项目结构
 
@@ -138,10 +131,10 @@ src/background/offscreen.*        offscreen document 剪贴板兜底
 src/assets/icons/                 扩展图标（node tools/make-icons.js 生成）
 ```
 
-实现要点：UI 隔离在 Shadow DOM 中（adoptedStyleSheets 注入 M3 令牌，不受页面样式影响）；
-封面 / favicon 由后台抓取转 dataURL，画布不被跨域污染；剪贴板先走内容脚本
-`navigator.clipboard.write`，失败自动转 offscreen document；"修改链接"由后台按同一份
-rules.json 完成抓取与提取。
+UI 隔离在 Shadow DOM 里（adoptedStyleSheets 注入 M3 令牌），不受页面样式影响；
+封面和 favicon 由后台抓取转 dataURL，画布不被跨域污染；剪贴板先走内容脚本
+`navigator.clipboard.write`，失败自动转 offscreen document；"修改链接"由后台按
+同一份 rules.json 完成抓取与提取。
 
 ## 本地测试与工具
 
@@ -155,21 +148,25 @@ node tools/e2e/edit-link.js          # 端到端：修改链接、跨页提取�
 ```
 
 测试页含 5 种卡片样例、二维码 jsQR 回读自检与 18 条站点规则匹配自检；运行产物输出到
-`test/out/`（本地生成，不入库）。`tools/e2e/chrome/` 为 Chrome for Testing 136
-（约 150MB；Chrome 137+ 的 headless 不再支持 `--load-extension`，故固定该版本），
-不需要可直接删除。
+`test/out/`（本地生成，不入库）。`tools/e2e/chrome/` 是 Chrome for Testing 136
+（约 150MB；Chrome 137+ 的 headless 不再支持 `--load-extension`，所以固定这个版本），
+不需要可以直接删掉。README 里的截图就是用 `export-live.js` 和 `run.js` 在真实页面上
+生成的。
 
 ## 已知限制
 
-- 微博 / 小红书 / 抖音等强登录站点，未登录时 og 信息可能缺失（自动降级二维码模式）
+- 微博 / 小红书 / 抖音这类强登录站点，未登录时 og 信息可能缺失（自动降级二维码模式）
 - 部分站点的 favicon 受防盗链影响时会回退为站点首字母色块
 - `chrome://` 等浏览器内部页面无法注入内容脚本
 - 剪贴板需要页面处于聚焦状态；极少数严格 CSP 页面会自动走 offscreen 兜底通道
 
 ## 隐私
 
-插件不收集、不上传任何数据；所有抓取仅发生在生成分享图的瞬间，用于读取公开的页面元信息与封面图。
+不收集、不上传任何数据。所有抓取都发生在生成分享图的那一瞬间，只读取公开的
+页面元信息和封面图。
 
 ## 协议
 
-[MIT](LICENSE)。内含的二维码生成库 [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator)（`src/lib/qrcode.js`）同为 MIT 协议，版权归其作者 Kazuhiko Arase 所有。
+[MIT](LICENSE)。内含的二维码生成库
+[qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator)
+（`src/lib/qrcode.js`）同为 MIT，版权归其作者 Kazuhiko Arase 所有。
