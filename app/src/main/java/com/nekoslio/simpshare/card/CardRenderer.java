@@ -53,11 +53,26 @@ public final class CardRenderer {
                 & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
 
         // 封面（降采样解码；低内存占用优先）。Referer 用规范页地址：
-        // 短链域（如 b23.tv）会被部分站点图床拒绝（hdslb 403）
+        // 短链域（如 b23.tv）会被部分站点图床拒绝（hdslb 403）。
+        // 直链偶发的瞬时失败重试一次；仍失败再试规则声明的备选直链
         Bitmap cover = null;
         if (meta.coverUrl != null) {
             try {
                 byte[] bytes = Http.fetchBytes(meta.coverUrl, meta.url, 8_000_000);
+                cover = decodeDownsampled(bytes, 1280);
+            } catch (Exception e) {
+                try { Thread.sleep(400); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                try {
+                    byte[] bytes = Http.fetchBytes(meta.coverUrl, meta.url, 8_000_000);
+                    cover = decodeDownsampled(bytes, 1280);
+                } catch (Exception e2) {
+                    cover = null;
+                }
+            }
+        }
+        if (cover == null && meta.coverFallbackUrl != null && !meta.coverFallbackUrl.equals(meta.coverUrl)) {
+            try {
+                byte[] bytes = Http.fetchBytes(meta.coverFallbackUrl, meta.url, 8_000_000);
                 cover = decodeDownsampled(bytes, 1280);
             } catch (Exception e) {
                 cover = null;
@@ -117,8 +132,10 @@ public final class CardRenderer {
                 float bw = Math.min(CH * ar, availW);
                 float bh = bw / ar;
                 if (bh > CH) { bh = CH; bw = bh * ar; }
+                // 宽度未占满时水平居中（GitHub 社交卡片 2:1，左对齐会留大块空白）
+                float bx = meta.hideDesc ? MARGIN + Math.max(0, (availW - bw) / 2f) : MARGIN;
                 float by = CONTENT_Y + (CH - bh) / 2f;
-                drawRoundedBitmap(canvas, paint, cover, MARGIN, by, bw, bh, 28);
+                drawRoundedBitmap(canvas, paint, cover, bx, by, bw, bh, 28);
                 if (!meta.hideDesc) {
                     drawDesc(canvas, paint, meta.description, MARGIN + bw + 64, (qrX - 64) - (MARGIN + bw + 64), descColor);
                 }

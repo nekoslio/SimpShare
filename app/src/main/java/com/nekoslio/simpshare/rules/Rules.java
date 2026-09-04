@@ -45,6 +45,8 @@ public final class Rules {
         public String title = "";
         public String description = "";
         public String coverUrl;
+        /** og 封面缺失或抓取失败时的备选直链（如 GitHub 的 opengraph.githubassets.com） */
+        public String coverFallbackUrl;
         public List<String> faviconCandidates;
         public boolean hasCover;
         public boolean containCover;
@@ -275,13 +277,18 @@ public final class Rules {
         }
         if (meta.title.length() == 0) meta.title = url;
 
-        // GitHub：标题取 owner/repo，简介去官方样板句
+        // GitHub：标题取 owner/repo，简介去官方样板句；
+        // 封面备选直链（opengraph.githubassets.com 按 owner/repo 现生成，og 图抓取失败时重试）
         if (rule != null && "github".equals(rule.id)) {
             URL u = safeUrl(url);
             if (u != null) {
                 java.util.regex.Matcher m = Pattern.compile("^/([^/]+)/([^/]+)")
                         .matcher(u.getPath());
-                if (m.find()) meta.title = m.group(1) + "/" + m.group(2).replaceFirst("\\.git$", "");
+                if (m.find()) {
+                    meta.title = m.group(1) + "/" + m.group(2).replaceFirst("\\.git$", "");
+                    meta.coverFallbackUrl = "https://opengraph.githubassets.com/1/"
+                            + m.group(1) + "/" + m.group(2).replaceFirst("\\.git$", "");
+                }
             }
             meta.description = meta.description
                     .replaceAll("\\s*Contribute to .*? on GitHub\\.?\\s*$", "").trim();
