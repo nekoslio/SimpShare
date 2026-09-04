@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "SimpShare — 网页分享卡片",
   "short_name": "SimpShare",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "一键为当前网页生成 21:9 精美分享卡片：标题 + 封面 + 简介 + 二维码，复制到剪贴板即可分享。",
   "minimum_chrome_version": "111",
   "icons": {

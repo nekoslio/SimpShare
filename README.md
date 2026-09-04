@@ -16,11 +16,11 @@ B 站链接会按内置规则改写成镜像域名（`bilibili.com/video/BV…` 
 ## 安装
 
 从 [Releases](https://github.com/nekoslio/SimpShare/releases) 下载
-`simpshare-1.0.1.zip` 并解压，打开 `chrome://extensions`（Edge 是
+`simpshare-1.0.2.zip` 并解压，打开 `chrome://extensions`（Edge 是
 `edge://extensions`），打开右上角**开发者模式**，点**加载已解压的扩展程序**，
 选中解压出的文件夹，最后固定到工具栏。
 
-`simpshare-1.0.1.crx` 是带签名的打包产物，供企业策略部署使用。新版 Chrome
+`simpshare-1.0.2.crx` 是带签名的打包产物，供企业策略部署使用。新版 Chrome
 不允许直接拖入安装非商店扩展，拖入会报 `CRX_REQUIRED_PROOF_MISSING`，
 这是浏览器限制，不是包坏了。
 
