@@ -30,11 +30,13 @@
   const PALETTES = {
     light: {
       bg: '#FFFFFF', title: '#1C1B1F', desc: '#49454F',
-      tileBgMode: 'light', qrBox: '#FFFFFF', qrDark: '#1C1B1F'
+      tileBgMode: 'light', qrBox: '#FFFFFF', qrDark: '#1C1B1F',
+      tagBg: '#D3E3FD', tagFg: '#041E49'
     },
     dark: {
       bg: '#1C1B1F', title: '#E6E1E9', desc: '#CAC4D0',
-      tileBgMode: 'dark', qrBox: '#FFFFFF', qrDark: '#1C1B1F'
+      tileBgMode: 'dark', qrBox: '#FFFFFF', qrDark: '#1C1B1F',
+      tagBg: '#A8C7FA', tagFg: '#062E6F'
     }
   };
 
@@ -304,6 +306,7 @@
     // 以链接文本末端（右下角顶点）距卡片右/下边缘各 48 的固定距离为锚点右对齐；
     // 可用宽度被限制在左右页边距之间，链接过长会与其他控件冲突时改用提示文案。
     drawUrlCaption(ctx, meta.url, pal);
+    if (meta.rewritten) drawRewrittenTag(ctx, pal);
     return canvas;
   }
 
@@ -323,6 +326,29 @@
     ctx.textBaseline = 'alphabetic';
     ctx.fillText(line, anchorRight, anchorBottom);
     ctx.textAlign = 'left';
+  }
+
+  /** 在 URL 标注上方绘制"已改写"药丸（M3 primary-container 配色） */
+  function drawRewrittenTag(ctx, pal) {
+    const text = '已改写';
+    const font = 26;
+    const padX = 18, padY = 10;
+    ctx.font = '500 ' + font + 'px ' + FONT_STACK;
+    const tw = ctx.measureText(text).width;
+    const w = Math.round(tw + padX * 2);
+    const h = Math.round(font + padY * 2);
+    // 右对齐到 URL 标注的右下锚点（W-48），位于其上方
+    const x = W - 48 - w;
+    const y = H - 48 - h - 18;
+    ctx.fillStyle = pal.tagBg;
+    roundRectPath(ctx, x, y, w, h, h / 2);
+    ctx.fill();
+    ctx.fillStyle = pal.tagFg;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, x + w / 2, y + h / 2 + 1);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
   }
 
   function drawDesc(ctx, text, x, w, pal) {

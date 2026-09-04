@@ -244,6 +244,18 @@
       color: var(--sq-on-surface);
     }
     .field input::placeholder { color: var(--sq-hint); }
+    .rewritten {
+      flex: none;
+      font-size: 11px;
+      line-height: 1;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: var(--sq-primary-container);
+      color: var(--sq-on-primary-container);
+      font-weight: 500;
+      letter-spacing: .1px;
+      white-space: nowrap;
+    }
     .icon-btn {
       flex: none;
       width: 40px; height: 40px;
@@ -319,6 +331,7 @@
         <div class="editor">
           <div class="field">
             ${ICONS.link}
+            <span class="rewritten" hidden>已改写</span>
             <input type="text" spellcheck="false" placeholder="输入要分享的链接，回车提交" />
             <button class="icon-btn ok" title="提交并重新生成">${ICONS.check}</button>
           </div>
@@ -339,6 +352,7 @@
   const editor = $('.editor');
   const field = $('.field');
   const urlInput = $('.field input');
+  const rewrittenTag = $('.rewritten');
   const okBtn = $('.icon-btn.ok');
   const snackbar = $('.snackbar');
 
@@ -540,12 +554,14 @@
     const faviconDataUrl = await fetchFaviconData(base, src);
 
     // 未适配站点也允许从 head <meta> 取封面（behavior.ogForUnmatchedSites）
+    const displayUrl = SimpShareRules.applyRedirect(src);
     const m = {
       title: base.title || src,
       description: base.description || '',
       coverDataUrl: coverDataUrl,
       faviconDataUrl: faviconDataUrl,
-      url: SimpShareRules.applyRedirect(src),
+      url: displayUrl,
+      rewritten: displayUrl !== src,
       hasCover: !!coverDataUrl && (rule ? true : SimpShareRules.allowUnmatchedCover())
     };
     // 站点专属卡片渲染提示（如 GitHub：封面不裁切、不绘制简介模块）
@@ -571,6 +587,7 @@
       const m = await getMetaFor(url);
       if (t !== genToken || !panelOpen) return;
       meta = m;
+      rewrittenTag.hidden = !m.rewritten;
       if (document.activeElement !== urlInput) urlInput.value = m.url;
       await SimpShareRender.drawCard(previewCanvas, m, 0.5);
       if (t !== genToken || !panelOpen) return;
