@@ -177,15 +177,17 @@ public final class Rules {
         // 规则内且封面抓取条件满足 → 封面模式；未适配站点也允许 og 封面
         meta.hasCover = meta.coverUrl != null;
 
-        // favicon 候选：结构化提取路径若未解析过 HTML，则至少回退站点根 favicon
+        // favicon 候选：结构化提取路径也补拉一次 HTML 以获得完整候选列表
         if (meta.faviconCandidates == null) {
-            if (html != null) {
-                meta.faviconCandidates = faviconCandidates(html, url);
-            } else {
-                List<String> fb = new ArrayList<>();
+            List<String> fb = new ArrayList<>();
+            try {
+                if (html == null) html = Http.fetchText(url, null);
+                fb = faviconCandidates(html, url);
+            } catch (Exception e) { /* ignore */ }
+            if (fb.isEmpty()) {
                 try { fb.add(new URL(new URL(url), "/favicon.ico").toString()); } catch (Exception e) { /* ignore */ }
-                meta.faviconCandidates = fb;
             }
+            meta.faviconCandidates = fb;
         }
         return meta;
     }

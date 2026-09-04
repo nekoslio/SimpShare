@@ -86,6 +86,19 @@ public final class CardRenderer {
 
         // 顶部：站点图标 + 标题
         drawFaviconTile(canvas, paint, meta, favicon, url, night, MARGIN, TITLE_Y, TILE);
+
+        // 调试覆盖层：展示 favicon 原图与裁边前后尺寸（发布前移除）
+        if (DEBUG_FAVICON) {
+            Paint dp = new Paint(paint);
+            dp.setFilterBitmap(true);
+            if (favOriginal != null) {
+                drawContain(canvas, dp, favOriginal, MARGIN, 8, 44, 44);
+            }
+            Paint dt = new Paint(paint);
+            dt.setColor(descColor);
+            dt.setTextSize(24f);
+            canvas.drawText("fav " + favDebugInfo, MARGIN + 56, 8 + 32, dt);
+        }
         Paint titlePaint = new Paint(paint);
         titlePaint.setColor(titleColor);
         titlePaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
@@ -268,6 +281,11 @@ public final class CardRenderer {
     }
 
     /** 解码全部候选并择优：URL 含 favicon、正方形、分辨率高者得分更高（避免偏大/偏小的图标） */
+    // 调试：临时可视化 favicon 原图与裁边结果（定位"图标未铺满"问题，发布前关闭）
+    private static final boolean DEBUG_FAVICON = true;
+    private static Bitmap favOriginal;
+    private static String favDebugInfo = "";
+
     private static Bitmap fetchFavicon(Context c, Rules.Meta meta) {
         List<String> candidates = meta.faviconCandidates;
         if (candidates == null) {
@@ -278,6 +296,8 @@ public final class CardRenderer {
         }
         Bitmap best = null;
         int bestScore = -1;
+        String bestUrl = null;
+        int bestW = 0, bestH = 0;
         for (String u : candidates) {
             Bitmap b = null;
             try {
@@ -303,14 +323,22 @@ public final class CardRenderer {
                 if (best != null) best.recycle();
                 best = b;
                 bestScore = score;
+                bestUrl = u;
+                bestW = w;
+                bestH = h;
             } else {
                 b.recycle();
             }
         }
         if (best != null) {
+            favOriginal = best;   // 调试持有：未裁边原图
             Bitmap trimmed = trimFaviconBorder(best);
             if (trimmed != best) best.recycle();
             best = trimmed;
+            String tail = bestUrl != null && bestUrl.length() > 24
+                    ? bestUrl.substring(bestUrl.length() - 24) : String.valueOf(bestUrl);
+            favDebugInfo = bestW + "x" + bestH + "→" + best.getWidth() + "x" + best.getHeight()
+                    + "  " + tail;
         }
         return best;
     }
