@@ -111,6 +111,7 @@
       },
       "card": { "containCover": true, "hideDesc": true },
       "extract": { "og": true },
+      "coverFallback": { "pattern": "^/([^/]+)/([^/]+)", "template": "https://opengraph.githubassets.com/1/{1}/{2}" },
       "titleFromPath": { "pattern": "^/([^/]+)/([^/]+)", "template": "{1}/{2}" },
       "transforms": [{ "field": "description", "stripRegex": "\\s*Contribute to .*? on GitHub\\.?\\s*$", "flags": "i" }]
     },

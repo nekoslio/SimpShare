@@ -594,9 +594,17 @@
         : { title: url, description: '', coverUrl: null, faviconCandidates: [] };
     }
 
-    const coverDataUrl = base.coverUrl
-      ? ((await sendBg({ type: 'FETCH_IMAGE', url: base.coverUrl, referer: src })).dataUrl || null)
-      : null;
+    // 封面：og:image 抓取失败或缺失时，按规则声明的备选直链重试（如 GitHub 的 opengraph.githubassets.com）
+    let coverDataUrl = null;
+    if (base.coverUrl) {
+      coverDataUrl = (await sendBg({ type: 'FETCH_IMAGE', url: base.coverUrl, referer: src })).dataUrl || null;
+    }
+    if (!coverDataUrl) {
+      const fb = SimpShareRules.coverFallbackFor(rule, src);
+      if (fb && fb !== base.coverUrl) {
+        coverDataUrl = (await sendBg({ type: 'FETCH_IMAGE', url: fb, referer: src })).dataUrl || null;
+      }
+    }
     const faviconDataUrl = await fetchFaviconData(base, src);
 
     // 未适配站点也允许从 head <meta> 取封面（behavior.ogForUnmatchedSites）

@@ -299,6 +299,19 @@
     }
   }
 
+  /** 声明式封面兜底 URL（rule.coverFallback: {pattern, template}，按 URL path 捕获组组装）。
+   *  用途：og:image 缺失或抓取失败时重试备选直链（如 GitHub 的 opengraph.githubassets.com） */
+  function coverFallbackFor(rule, urlStr) {
+    const r = rule || {};
+    if (!r.coverFallback || !urlStr) return null;
+    try {
+      const u = new URL(urlStr);
+      const m = u.pathname.match(new RegExp(r.coverFallback.pattern));
+      if (!m) return null;
+      return String(r.coverFallback.template).replace(/\{(\d+)\}/g, (_, i) => m[i] || '');
+    } catch (e) { return null; }
+  }
+
   /* ---------------- 未适配站点的 head <meta> 兜底 ---------------- */
 
   function allowUnmatchedCover() { return behavior.ogForUnmatchedSites !== false; }
@@ -358,6 +371,7 @@
     extractFromValues: extractFromValues,
     runApi: runApi,
     applyTransforms: applyTransforms,
+    coverFallbackFor: coverFallbackFor,
     applyRedirect: applyRedirect,
     unRedirect: unRedirect,
     metaSelectors: metaSelectors,

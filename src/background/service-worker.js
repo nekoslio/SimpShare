@@ -265,9 +265,16 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
   (async function () {
     try {
       switch (msg && msg.type) {
-        case 'FETCH_IMAGE':
-          sendResponse(await fetchImage(msg.url, msg.referer));
+        case 'FETCH_IMAGE': {
+          let r = await fetchImage(msg.url, msg.referer);
+          if (!r.ok) {
+            // 直链偶发的瞬时失败（DNS / 连接重置）短暂等待后重试一次
+            await new Promise(res => setTimeout(res, 400));
+            r = await fetchImage(msg.url, msg.referer);
+          }
+          sendResponse(r);
           break;
+        }
         case 'FETCH_FAVICON':
           sendResponse(await fetchFavicon(msg.candidates));
           break;

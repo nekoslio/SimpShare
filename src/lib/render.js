@@ -332,8 +332,10 @@
         let bw = Math.min(CH * ar, availW);
         let bh = bw / ar;
         if (bh > CH) { bh = CH; bw = bh * ar; }
+        // 宽度未占满时水平居中（GitHub 社交卡片 2:1，左对齐会留大块空白）
+        const bx = meta.hideDesc ? MARGIN + Math.max(0, (availW - bw) / 2) : MARGIN;
         const by = CONTENT_Y + (CH - bh) / 2;
-        drawCoverImage(ctx, coverImg, MARGIN, by, bw, bh, 28);
+        drawCoverImage(ctx, coverImg, bx, by, bw, bh, 28);
         if (!meta.hideDesc) {
           const descX = MARGIN + bw + 64;
           drawDesc(ctx, meta.description, descX, (qrX - 64) - descX, pal);
@@ -356,7 +358,6 @@
     // 以链接文本末端（右下角顶点）距卡片右/下边缘各 48 的固定距离为锚点右对齐；
     // 可用宽度被限制在左右页边距之间，链接过长会与其他控件冲突时改用提示文案。
     drawUrlCaption(ctx, meta.url, pal);
-    if (meta.rewritten) drawRewrittenTag(ctx, pal);
     return canvas;
   }
 
@@ -376,29 +377,6 @@
     ctx.textBaseline = 'alphabetic';
     ctx.fillText(line, anchorRight, anchorBottom);
     ctx.textAlign = 'left';
-  }
-
-  /** 在 URL 标注上方绘制"已改写"药丸（M3 primary-container 配色） */
-  function drawRewrittenTag(ctx, pal) {
-    const text = '已改写';
-    const font = 26;
-    const padX = 18, padY = 10;
-    ctx.font = '500 ' + font + 'px ' + FONT_STACK;
-    const tw = ctx.measureText(text).width;
-    const w = Math.round(tw + padX * 2);
-    const h = Math.round(font + padY * 2);
-    // 右对齐到 URL 标注的右下锚点（W-48），位于其上方
-    const x = W - 48 - w;
-    const y = H - 48 - h - 18;
-    ctx.fillStyle = pal.tagBg;
-    roundRectPath(ctx, x, y, w, h, h / 2);
-    ctx.fill();
-    ctx.fillStyle = pal.tagFg;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(text, x + w / 2, y + h / 2 + 1);
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'alphabetic';
   }
 
   function drawDesc(ctx, text, x, w, pal) {
