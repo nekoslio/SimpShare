@@ -19,6 +19,7 @@
   };
 
   let data = null;
+  let redirectRules = [];
   let compiled = [];
   let behavior = { ogForUnmatchedSites: true };
   let metaTags = DEFAULT_META_TAGS;
@@ -120,6 +121,16 @@
       const alts = r.matchAny || (r.match ? [r.match] : []);
       return { raw: r, alts: alts.map(compileMatch) };
     });
+    redirectRules = (d.redirect && Array.isArray(d.redirect.rules))
+      ? d.redirect.rules.map(function (r) {
+          return {
+            match: r.match ? new RegExp(r.match) : null,
+            replace: r.replace || '',
+            unmatch: r.unmatch ? new RegExp(r.unmatch) : null,
+            unreplace: r.unreplace || ''
+          };
+        }).filter(function (r) { return r.match; })
+      : [];
     loadPending = null;
   }
 
@@ -311,48 +322,26 @@
   }
 
 
-  /* ---------------- 域名改写（分享卡片 URL / 二维码） ----------------
-   * 规则订阅文件顶层的 redirect.hostMap 声明"源 host → 目标 host"映射：
-   * 仅改写分享卡片上展示的 URL 与二维码内容（如 bilibili.com → bilibilibb.com），
-   * 元信息抓取仍使用原始 URL。目标站点自行负责去除追踪参数。
-   * 未命中映射（或无 redirect 配置）时原样返回。
+  /* ---------------- URL 改写（分享卡片 URL / 二维码） ----------------
+   * 规则订阅文件顶层的 redirect.rules 声明正则改写规则：
+   *   match/replace    源 URL → 展示 URL（如 bilibili.com/video/BV.. → bilibilibb.com/video/BV..）
+   *   unmatch/unreplace 展示 URL → 源 URL（提交/编辑时恢复源域名以便规则匹配与抓取）
+   * 仅改写分享卡片上展示的 URL 与二维码内容；元信息抓取仍使用源 URL。
+   * 目标站点自行负责去除追踪参数。未命中任何规则时原样返回。
    */
   function applyRedirect(urlStr) {
-    if (!data || !data.redirect || !data.redirect.hostMap) return urlStr;
-    let u;
-    try { u = new URL(urlStr); } catch (e) { return urlStr; }
-    const map = data.redirect.hostMap;
-    // 后缀匹配：www.bilibili.com 命中 bilibili.com，改写为 www.bilibilibb.com
-    for (const src of Object.keys(map)) {
-      if (hostIs(u.hostname, src)) {
-        try {
-          u.hostname = u.hostname.slice(0, u.hostname.length - src.length) + map[src];
-          return u.href;
-        } catch (e) { /* 保持原值 */ }
-      }
+    for (const r of redirectRules) {
+      const out = urlStr.replace(r.match, r.replace);
+      if (out !== urlStr) return out;
     }
     return urlStr;
   }
 
-
-  /* ---------------- 反向映射（提交/编辑时恢复源域名） ----------------
-   * 输入框展示的是改写后的干净域名，用户重新提交时需先转回源域名，
-   * 规则匹配 / 元信息抓取才能命中（bilibilibb.com → bilibili.com）。
-   */
   function unRedirect(urlStr) {
-    if (!data || !data.redirect || !data.redirect.hostMap) return urlStr;
-    let u;
-    try { u = new URL(urlStr); } catch (e) { return urlStr; }
-    const map = data.redirect.hostMap;
-    // 后缀匹配反向：www.bilibilibb.com 命中 bilibilibb.com，转回 www.bilibili.com
-    for (const src of Object.keys(map)) {
-      const target = map[src];
-      if (hostIs(u.hostname, target)) {
-        try {
-          u.hostname = u.hostname.slice(0, u.hostname.length - target.length) + src;
-          return u.href;
-        } catch (e) { /* 保持原值 */ }
-      }
+    for (const r of redirectRules) {
+      if (!r.unmatch) continue;
+      const out = urlStr.replace(r.unmatch, r.unreplace);
+      if (out !== urlStr) return out;
     }
     return urlStr;
   }

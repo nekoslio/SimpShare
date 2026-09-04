@@ -14,10 +14,20 @@
     "image": ["og:image", "og:image:secure_url", "twitter:image", "twitter:image:src"]
   },
   "redirect": {
-    "hostMap": {
-      "bilibili.com": "bilibilibb.com",
-      "b23.tv": "b23bb.tv"
-    }
+    "rules": [
+      {
+        "match": "^https?://(?:www\\.)?bilibili\\.com/video/(BV[\\w-]+)",
+        "replace": "https://bilibilibb.com/video/$1",
+        "unmatch": "^https?://(?:www\\.)?bilibilibb\\.com/video/(BV[\\w-]+)",
+        "unreplace": "https://bilibili.com/video/$1"
+      },
+      {
+        "match": "^https?://b23\\.tv/([\\w-]+)",
+        "replace": "https://b23bb.tv/$1",
+        "unmatch": "^https?://b23bb\\.tv/([\\w-]+)",
+        "unreplace": "https://b23.tv/$1"
+      }
+    ]
   },
   "siteRules": [
     {
