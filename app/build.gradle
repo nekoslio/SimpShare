@@ -3,10 +3,15 @@ plugins {
 }
 
 // 发布签名：本地生成 keystore（不入库）后自动使用；不存在时回退 debug 签名，保证可构建
-def ksFile = rootProject.file('.build-tools/release.keystore')
+// 查找顺序：仓库根（worktree 布局时的共享目录）→ android 分支根
+def ksCandidates = [rootProject.file('.build-tools/release.keystore'),
+                    rootProject.file('../.build-tools/release.keystore')]
+def ksFile = ksCandidates.find { it.exists() }
 def localProps = new Properties()
-def lpFile = rootProject.file('local.properties')
-if (lpFile.exists()) {
+def lpCandidates = [rootProject.file('local.properties'),
+                    rootProject.file('../local.properties')]
+def lpFile = lpCandidates.find { it.exists() }
+if (lpFile != null) {
     localProps.load(new FileInputStream(lpFile))
 }
 
