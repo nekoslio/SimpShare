@@ -15,6 +15,9 @@ Chrome / Edge（Chromium 内核）**Manifest V3** 扩展，最低要求 Chrome 1
 3. 点击**加载已解压的扩展程序**，选择本仓库根目录（含 `manifest.json` 的文件夹）
 4. 固定到工具栏即可，全部交互在页面内完成
 
+也可以从 [Releases](https://github.com/nekoslio/SimpShare/releases) 下载 `simpshare-x.y.z.zip`，
+解压后按上述步骤加载解压出的文件夹。
+
 ## 使用
 
 | 操作 | 说明 |

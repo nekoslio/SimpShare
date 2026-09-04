@@ -7,3 +7,6 @@ test/out/
 *.log
 .DS_Store
 Thumbs.db
+
+# 本地构建产物与签名私钥（切勿提交）
+build/
