@@ -5,6 +5,7 @@ import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Bundle;
 import android.text.TextUtils;
+import android.util.Log;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.FileProvider;
@@ -16,9 +17,24 @@ import java.io.File;
 /** 分享入口：接收系统分享的文本/链接，生成卡片图片后再唤起系统分享。 */
 public class ShareActivity extends AppCompatActivity {
 
+    private static final String TAG = "SimpShare";
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        handleShare();
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        // 已在栈顶时再次收到分享（如上一张卡片停在错误页），否则新分享会被静默丢弃
+        setIntent(intent);
+        handleShare();
+    }
+
+    /** 处理一次分享：无文本时仅展示操作流程，有文本时生成卡片图片并唤起系统分享 */
+    private void handleShare() {
         String text = extractSharedText(getIntent());
         if (TextUtils.isEmpty(text)) {
             // 直接打开时仅展示操作流程
@@ -27,8 +43,10 @@ public class ShareActivity extends AppCompatActivity {
             return;
         }
         setContentView(FlowView.loading(this));
+        Log.i(TAG, "shared text: " + text);
         final String url = Urls.extract(text);
         if (TextUtils.isEmpty(url)) {
+            Log.w(TAG, "no url in shared text: " + text);
             setContentView(FlowView.error(this, getString(R.string.error_no_url)));
             return;
         }
@@ -51,6 +69,7 @@ public class ShareActivity extends AppCompatActivity {
                 startActivity(chooser);
                 finish();
             } catch (Exception e) {
+                Log.e(TAG, "card generation failed for " + url, e);
                 runOnUiThread(() -> setContentView(
                         FlowView.error(this, getString(R.string.error_generate, String.valueOf(e)))));
             }

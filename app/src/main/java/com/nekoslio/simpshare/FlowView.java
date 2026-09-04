@@ -22,6 +22,11 @@ final class FlowView {
 
     /** 桌面入口看到的操作流程页 */
     static View instructions(Context c) {
+        return wrapInScroll(instructionsColumn(c));
+    }
+
+    /** 流程页内容本体（不含滚动容器）：error 页需要在同一 LinearLayout 上追加错误卡片 */
+    private static LinearLayout instructionsColumn(Context c) {
         LinearLayout root = column(c);
         root.setPadding(dp(c, 24), dp(c, 32), dp(c, 24), dp(c, 32));
 
@@ -71,7 +76,7 @@ final class FlowView {
         foot.setTextColor(attrColor(c, com.google.android.material.R.attr.colorOnSurfaceVariant));
         root.addView(foot);
 
-        return wrapInScroll(root);
+        return root;
     }
 
     /** 分享处理中的加载页：居中的 M3 圆角卡片，内含加载动画与文案 */
@@ -118,7 +123,7 @@ final class FlowView {
 
     /** 生成失败：流程 + 错误信息 */
     static View error(Context c, String message) {
-        LinearLayout root = (LinearLayout) instructions(c);
+        LinearLayout root = instructionsColumn(c);
         MaterialCardView card = new MaterialCardView(c);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);

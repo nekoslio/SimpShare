@@ -23,8 +23,8 @@ android {
         applicationId 'com.nekoslio.simpshare'
         minSdk 26
         targetSdk 34
-        versionCode 3
-        versionName '1.0.1-debug'
+        versionCode 4
+        versionName '1.0.2'
     }
 
     signingConfigs {

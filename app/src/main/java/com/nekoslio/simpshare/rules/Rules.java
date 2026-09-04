@@ -150,8 +150,11 @@ public final class Rules {
 
         String html = null;
         if (rule != null && "bilibili-video".equals(rule.id)) {
-            html = Http.fetchText(url, null);
-            extractBilibili(meta, html);
+            // 页面 HTML 会被 B 站 WAF 按 TLS 指纹拦截（返回 412），优先走开放 API
+            if (!extractBilibiliApi(meta, url)) {
+                html = Http.fetchText(url, null);
+                extractBilibili(meta, html);
+            }
         } else if (rule != null && "netease-music".equals(rule.id)) {
             extractNetease(meta, url);
         }
@@ -210,6 +213,65 @@ public final class Rules {
             catch (Exception e) { meta.coverUrl = null; }
         }
         meta.faviconCandidates = faviconCandidates(html, baseUrl);
+    }
+
+    /**
+     * B站开放 API 提取（x/web-interface/view，仅要求 UA，不受 WAF 指纹拦截）。
+     * 返回 false 表示未取到，由调用方回退页面 HTML 提取。
+     */
+    private static boolean extractBilibiliApi(Meta meta, String url) {
+        try {
+            // b23.tv 短链先解析跳转：封面图床拒绝 b23.tv Referer（403），favicon 也不在短链域上
+            String pageUrl = url;
+            String id = videoIdFromPath(pageUrl);
+            if (id == null) {
+                try {
+                    URL u = new URL(url);
+                    String host = u.getHost() == null ? "" : u.getHost().toLowerCase();
+                    if (host.equals("b23.tv") || host.endsWith(".b23.tv")) {
+                        pageUrl = Http.resolve(url);
+                        id = videoIdFromPath(pageUrl);
+                    }
+                } catch (Exception e) { /* ignore */ }
+            }
+            if (id == null) return false;
+            String q = id.regionMatches(true, 0, "av", 0, 2)
+                    ? "aid=" + id.substring(2) : "bvid=" + id;
+            JSONObject root = new JSONObject(Http.fetchText(
+                    "https://api.bilibili.com/x/web-interface/view?" + q,
+                    "https://www.bilibili.com/"));
+            if (root.optInt("code", -1) != 0) return false;
+            JSONObject v = root.optJSONObject("data");
+            if (v == null) return false;
+            meta.url = pageUrl;
+            meta.title = v.optString("title");
+            String desc = v.optString("desc");
+            JSONObject owner = v.optJSONObject("owner");
+            String author = owner == null ? "" : owner.optString("name");
+            meta.description = TextUtils.isEmpty(author) ? desc : "UP主：" + author + "\n" + desc;
+            String pic = v.optString("pic");
+            meta.coverUrl = pic.startsWith("http://")
+                    ? pic.replaceFirst("^http://", "https://")
+                    : (pic.isEmpty() ? null : pic);
+            // API 路径不再回抓 HTML（会被 WAF 拒），favicon 直接用站点默认图标
+            List<String> fb = new ArrayList<>();
+            try { fb.add(new URL(new URL(pageUrl), "/favicon.ico").toString()); } catch (Exception e) { /* ignore */ }
+            meta.faviconCandidates = fb;
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static String videoIdFromPath(String url) {
+        try {
+            String p = new URL(url).getPath();
+            if (p == null) return null;
+            Matcher m = Pattern.compile("/video/(BV[0-9A-Za-z]{10}|[Aa][Vv]\\d+)").matcher(p);
+            return m.find() ? m.group(1) : null;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** B站：页面内嵌 __INITIAL_STATE__.videoData */

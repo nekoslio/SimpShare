@@ -21,6 +21,29 @@ public final class Http {
         return new String(bytes, StandardCharsets.UTF_8);
     }
 
+    /** 跟随重定向返回最终地址（不读响应体），用于 b23.tv 之类短链的解析 */
+    public static String resolve(String url) throws Exception {
+        String current = url;
+        for (int hop = 0; hop < 5; hop++) {
+            HttpURLConnection c = (HttpURLConnection) new URL(current).openConnection();
+            c.setConnectTimeout(15_000);
+            c.setReadTimeout(20_000);
+            c.setInstanceFollowRedirects(false);
+            c.setRequestProperty("User-Agent", UA);
+            int code = c.getResponseCode();
+            if (code >= 300 && code < 400) {
+                String loc = c.getHeaderField("Location");
+                c.disconnect();
+                if (loc == null) return current;
+                current = new URL(new URL(current), loc).toString();
+                continue;
+            }
+            c.disconnect();
+            return current;
+        }
+        return current;
+    }
+
     public static byte[] fetchBytes(String url, String referer, int maxBytes) throws Exception {
         String current = url;
         for (int hop = 0; hop < 5; hop++) {
