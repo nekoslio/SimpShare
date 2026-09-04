@@ -1,25 +1,49 @@
 # SimpShare
 
-为网页生成 21:9 分享卡片的开源项目。仓库按分支划分两个子项目，本地目录通过
-git worktree 与分支一一对应：
+把一条网页链接变成一张 21:9 的分享卡片：站点图标、标题、封面、简介、二维码，
+一张图说清来源，扫码即可回到原页。
 
-| 分支 | 本地目录 | 子项目 |
-| --- | --- | --- |
-| [`extensions`](https://github.com/nekoslio/SimpShare/tree/extensions) | `extensions/` | 浏览器扩展（Chrome / Edge，Manifest V3） |
-| [`android`](https://github.com/nekoslio/SimpShare/tree/android) | `android/` | Android 客户端（系统分享进出，Java + Material 3） |
+目前有两个版本，卡片版式一致，共用同一份站点规则文件：
 
-两个子项目共用一份声明式站点规则 `rules.json`（扩展端位于 `src/rules/`，
-Android 端位于 `app/src/main/assets/`）与同一套 21:9 卡片版式。
+**浏览器扩展**（Chrome / Edge）——网页右侧有个悬浮分享按钮，点开就地生成卡片，
+一键复制到剪贴板，贴进微信、QQ、笔记应用都行。
+代码在 [`extensions` 分支](https://github.com/nekoslio/SimpShare/tree/extensions)，
+[Releases](https://github.com/nekoslio/SimpShare/releases) 可下载。
 
-## 本地目录说明
+![B 站视频分享卡片](https://raw.githubusercontent.com/nekoslio/SimpShare/extensions/docs/screenshots/card-bilibili-dark.png)
 
-- `extensions/`、`android/`：git worktree，分别检出一个分支，互不影响
-- `.build-tools/`：本地构建工具链与签名密钥（Android SDK / JDK / Gradle、扩展打包密钥），不入库
-- 在子项目目录内正常使用 `git` / `./gradlew` 即可，改动会提交到对应分支
+**Android 应用**——不碰浏览器也能用。在任意应用里点"分享"、选 SimpShare，
+它抓取链接的标题和封面生成卡片，然后直接唤起系统分享发出去。
+代码在 [`android` 分支](https://github.com/nekoslio/SimpShare/tree/android)，
+[Releases](https://github.com/nekoslio/SimpShare/releases) 可下载。
 
-## 常用命令
+| GitHub 仓库 | 网易云音乐 |
+| --- | --- |
+| <img src="https://raw.githubusercontent.com/nekoslio/SimpShare/extensions/docs/screenshots/card-github-light.png" width="440"> | <img src="https://raw.githubusercontent.com/nekoslio/SimpShare/extensions/docs/screenshots/card-netease-light.png" width="440"> |
+
+站点适配是声明式的：GitHub、B 站视频、网易云音乐这类重点站点按页面数据精确提取
+标题、封面和 UP 主 / 歌手信息；其余站点自动读页面 meta，拿不到封面就退回二维码
+模式，不会生成一张破图。所有规则都在一份 `rules.json` 里，加站点不用写代码，
+两个端通用。
+
+## 仓库结构
+
+代码不在 main 分支上，按子项目拆成了两个分支。本地克隆后可以用 git worktree
+把它们并排检出到目录里：
 
 ```bash
-git worktree list          # 查看分支与目录的对应关系
-git fetch origin && git branch -f extensions origin/extensions   # 更新某个子项目
+git clone https://github.com/nekoslio/SimpShare.git
+cd SimpShare
+git worktree add extensions extensions   # 浏览器扩展
+git worktree add android android         # Android 应用
 ```
+
+构建、测试和实现细节见各自分支的 README：
+[扩展端](https://github.com/nekoslio/SimpShare/blob/extensions/README.md) ·
+[Android 端](https://github.com/nekoslio/SimpShare/blob/android/README.md)。
+
+## 协议
+
+MIT（[LICENSE](https://github.com/nekoslio/SimpShare/blob/extensions/LICENSE)）。
+内含的二维码库 [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator)
+同为 MIT，版权归其作者所有。
