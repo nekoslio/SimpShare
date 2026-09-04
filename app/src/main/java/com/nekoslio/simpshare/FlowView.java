@@ -8,6 +8,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
@@ -92,12 +93,12 @@ final class FlowView {
         int pad = dp(c, 32);
         inner.setPadding(pad, pad, pad, pad);
 
-        com.google.android.material.progressindicator.CircularProgressIndicator bar =
-                new com.google.android.material.progressindicator.CircularProgressIndicator(c);
-        // 程序化创建时 indeterminate 动画可能不自动播放：挂载后做一次可见性切换触发
-        bar.setVisibility(View.INVISIBLE);
+        // 平台框架 ProgressBar 的 indeterminate 动画必然播放
+        //（material 库的进度指示器程序化创建 + 资源收缩下可能静止），着色为 M3 蓝
+        ProgressBar bar = new ProgressBar(c);
+        bar.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(
+                attrColor(c, com.google.android.material.R.attr.colorPrimary)));
         inner.addView(bar);
-        bar.post(() -> bar.setVisibility(View.VISIBLE));
 
         TextView t = new TextView(c);
         t.setText(R.string.generating);

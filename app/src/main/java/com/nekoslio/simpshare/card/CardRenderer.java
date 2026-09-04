@@ -297,6 +297,54 @@ public final class CardRenderer {
                 b.recycle();
             }
         }
+        if (best != null) {
+            Bitmap trimmed = trimFaviconBorder(best);
+            if (trimmed != best) best.recycle();
+            best = trimmed;
+        }
         return best;
+    }
+
+    /**
+     * 裁掉图标四周的纯色 / 透明留白，让内容铺满位图（cover 铺满外框前必须调用，
+     * 否则 logo 只占外框中间一小块）。
+     */
+    private static Bitmap trimFaviconBorder(Bitmap src) {
+        int w = src.getWidth(), h = src.getHeight();
+        if (w < 12 || h < 12) return src;
+        int[] px = new int[w * h];
+        src.getPixels(px, 0, w, 0, 0, w, h);
+        int bg = px[0];
+        boolean bgTransparent = (bg >>> 24) < 16;
+        int minX = w, minY = h, maxX = -1, maxY = -1;
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                int p = px[y * w + x];
+                boolean content = bgTransparent
+                        ? (p >>> 24) >= 16
+                        : colorDist(p, bg) > 48;
+                if (!content) continue;
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+            }
+        }
+        if (maxX < 0) return src;   // 全透明
+        int inset = Math.max(1, Math.round(Math.max(w, h) * 0.015f));
+        minX = Math.max(0, minX - inset);
+        minY = Math.max(0, minY - inset);
+        maxX = Math.min(w - 1, maxX + inset);
+        maxY = Math.min(h - 1, maxY + inset);
+        int cw = maxX - minX + 1, ch = maxY - minY + 1;
+        if (cw >= w * 0.92f && ch >= h * 0.92f) return src;   // 内容已铺满，无需裁
+        return Bitmap.createBitmap(px, minY * w + minX, w, cw, ch, src.getConfig());
+    }
+
+    private static int colorDist(int p, int q) {
+        return Math.abs(((p >> 16) & 0xFF) - ((q >> 16) & 0xFF))
+                + Math.abs(((p >> 8) & 0xFF) - ((q >> 8) & 0xFF))
+                + Math.abs((p & 0xFF) - (q & 0xFF))
+                + Math.abs((p >>> 24) - (q >>> 24));
     }
 }
