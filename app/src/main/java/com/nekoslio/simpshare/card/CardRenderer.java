@@ -163,7 +163,7 @@ public final class CardRenderer {
         paint.setColor(ColorUtils.HSLToColor(new float[]{hue, night ? 0.28f : 0.60f, night ? 0.24f : 0.92f}));
         canvas.drawPath(r, paint);
         if (favicon != null) {
-            drawContain(canvas, paint, favicon, x + s * 0.14f, y + s * 0.14f, s * 0.72f, s * 0.72f);
+            drawCoverBitmap(canvas, paint, favicon, x, y, s, s, 22);
         } else {
             String letter = host.startsWith("www.") ? host.substring(4) : host;
             letter = letter.isEmpty() ? "W" : letter.substring(0, 1).toUpperCase();
@@ -193,6 +193,18 @@ public final class CardRenderer {
         float s = Math.min(w / b.getWidth(), h / b.getHeight());
         float dw = b.getWidth() * s, dh = b.getHeight() * s;
         canvas.drawBitmap(b, x + (w - dw) / 2f, y + (h - dh) / 2f, paint);
+    }
+
+    /** cover 居中裁切：位图铺满目标区域（超出部分裁掉），带圆角 */
+    private static void drawCoverBitmap(Canvas canvas, Paint paint, Bitmap b,
+                                        float x, float y, float w, float h, float radius) {
+        paint.setFilterBitmap(true);
+        float scale = Math.max(w / b.getWidth(), h / b.getHeight());
+        float dw = b.getWidth() * scale, dh = b.getHeight() * scale;
+        canvas.save();
+        canvas.clipPath(roundRect(x, y, w, h, radius));
+        canvas.drawBitmap(b, x + (w - dw) / 2f, y + (h - dh) / 2f, paint);
+        canvas.restore();
     }
 
     private static Path roundRect(float x, float y, float w, float h, float r) {

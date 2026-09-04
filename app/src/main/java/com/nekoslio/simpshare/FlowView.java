@@ -94,7 +94,10 @@ final class FlowView {
 
         com.google.android.material.progressindicator.CircularProgressIndicator bar =
                 new com.google.android.material.progressindicator.CircularProgressIndicator(c);
+        // 程序化创建时 indeterminate 动画可能不自动播放：挂载后做一次可见性切换触发
+        bar.setVisibility(View.INVISIBLE);
         inner.addView(bar);
+        bar.post(() -> bar.setVisibility(View.VISIBLE));
 
         TextView t = new TextView(c);
         t.setText(R.string.generating);
