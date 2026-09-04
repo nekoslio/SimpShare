@@ -1,0 +1,54 @@
+plugins {
+    id 'com.android.application'
+}
+
+// 发布签名：本地生成 keystore（不入库）后自动使用；不存在时回退 debug 签名，保证可构建
+def ksFile = rootProject.file('.build-tools/release.keystore')
+def localProps = new Properties()
+def lpFile = rootProject.file('local.properties')
+if (lpFile.exists()) {
+    localProps.load(new FileInputStream(lpFile))
+}
+
+android {
+    namespace 'com.nekoslio.simpshare'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.nekoslio.simpshare'
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName '1.0.0'
+    }
+
+    signingConfigs {
+        release {
+            if (ksFile.exists()) {
+                storeFile ksFile
+                storePassword localProps.getProperty('simpshare.storePassword', 'simpshare')
+                keyAlias 'simpshare'
+                keyPassword localProps.getProperty('simpshare.keyPassword', 'simpshare')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig ksFile.exists() ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+}
+
+dependencies {
+    implementation 'com.google.android.material:material:1.12.0'
+    implementation 'com.google.zxing:core:3.5.3'
+}

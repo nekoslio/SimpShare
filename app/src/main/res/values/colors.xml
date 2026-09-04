@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Material 3 浅蓝（浅色模式） -->
+    <color name="md_primary">#0B57D0</color>
+    <color name="md_on_primary">#FFFFFF</color>
+    <color name="md_primary_container">#D3E3FD</color>
+    <color name="md_on_primary_container">#041E49</color>
+    <color name="ic_launcher_background">#D3E3FD</color>
+</resources>

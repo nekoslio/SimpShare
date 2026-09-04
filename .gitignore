@@ -1,0 +1,19 @@
+# Android 构建
+build/
+app/build/
+local.properties
+*.jks
+*.keystore
+
+# 本地构建工具链（JDK / Gradle / Android SDK commandline-tools）
+.build-tools/
+
+# extensions 分支的本地遗留目录（切回 extensions 时使用）
+/test/
+/tools/
+/docs/
+
+# 系统
+.DS_Store
+Thumbs.db
+*.log

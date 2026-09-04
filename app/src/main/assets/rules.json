@@ -1,0 +1,299 @@
+{
+  "name": "SimpShare 站点规则订阅",
+  "author": "SimpShare",
+  "version": 4,
+  "updatedAt": "2026-09-04",
+  "description": "GKD 风格的声明式站点规则：与应用主体分离，可独立更新。匹配(match/matchAny)决定规则命中；extract 决定标题/简介/封面的提取（og 为所有命中规则的兜底）；transforms 做字段变换；card 传入卡片渲染器。",
+  "behavior": {
+    "ogForUnmatchedSites": true,
+    "unmatchedCoverMeta": ["og:image", "og:image:secure_url", "twitter:image", "twitter:image:src", "itemprop:image"]
+  },
+  "metaTags": {
+    "title": ["og:title", "twitter:title"],
+    "description": ["og:description", "twitter:description", "description"],
+    "image": ["og:image", "og:image:secure_url", "twitter:image", "twitter:image:src"]
+  },
+  "siteRules": [
+    {
+      "id": "bilibili-video",
+      "label": "哔哩哔哩视频",
+      "matchAny": [
+        { "hosts": ["bilibili.com"], "path": "/video/" },
+        { "hosts": ["b23.tv"] }
+      ],
+      "extract": {
+        "og": true,
+        "state": {
+          "source": "__INITIAL_STATE__",
+          "requirePath": "videoData.title",
+          "fields": {
+            "title": "{videoData.title}",
+            "cover": "{videoData.pic}",
+            "descLines": ["UP主：{videoData.owner.name}", "{videoData.desc}"]
+          }
+        }
+      },
+      "transforms": [{ "field": "cover", "forceHttps": true }]
+    },
+    {
+      "id": "netease-music",
+      "label": "网易云音乐",
+      "match": {
+        "hosts": ["music.163.com"],
+        "path": "/(song|album|playlist)",
+        "pathSource": "pathAndHash"
+      },
+      "extract": {
+        "og": true,
+        "api": {
+          "pathSource": "pathAndHash",
+          "idFrom": { "type": "queryOrHash", "name": "id" },
+          "branches": [
+            {
+              "whenPath": "/song",
+              "url": "https://music.163.com/api/song/detail/?id={id}&ids=%5B{id}%5D",
+              "requirePath": "songs.0.name",
+              "fields": {
+                "title": "{songs.0.name}",
+                "cover": "{songs.0.album.picUrl}",
+                "descLines": ["歌手：{songs.0.artists[*].name|join ' / '}", "专辑：《{songs.0.album.name}》"]
+              }
+            },
+            {
+              "whenPath": "/album",
+              "url": "https://music.163.com/api/album/{id}",
+              "requirePath": "product.name",
+              "fields": {
+                "title": "{product.name|fallback name}",
+                "cover": "{product.picUrl|fallback picUrl}",
+                "descLines": ["歌手：{product.artists[*].name|fallback artists[*].name|join ' / '}"]
+              }
+            },
+            {
+              "whenPath": "/playlist",
+              "url": "https://music.163.com/api/playlist/detail?id={id}",
+              "requirePath": "result.name",
+              "fields": {
+                "title": "{result.name}",
+                "cover": "{result.coverImgUrl}",
+                "descLines": ["创建者：{result.creator.nickname}", "共 {result.trackCount} 首", "{result.description|clip 160}"]
+              }
+            }
+          ]
+        }
+      },
+      "transforms": [{ "field": "cover", "appendQuery": "param=1000y1000" }]
+    },
+    {
+      "id": "github",
+      "label": "GitHub 项目页",
+      "note": "官方社交卡片自带简介文字：封面不裁切、卡片不重复绘制简介",
+      "match": {
+        "hosts": ["github.com"],
+        "path": "^/[^/]+/[^/]+/?$",
+        "pathExclude": "^/(orgs|topics|marketplace|settings|notifications|explore|trending|features|pricing|sponsors|collections|security|enterprise|about|contact|login|join|search|searches|dashboard|account|site|events|issues|pulls|codespaces|apps|install|new|organizations|team|customers|readme|stats|git|showcases)/"
+      },
+      "card": { "containCover": true, "hideDesc": true },
+      "extract": { "og": true },
+      "titleFromPath": { "pattern": "^/([^/]+)/([^/]+)", "template": "{1}/{2}" },
+      "transforms": [{ "field": "description", "stripRegex": "\\s*Contribute to .*? on GitHub\\.?\\s*$", "flags": "i" }]
+    },
+    {
+      "id": "youtube",
+      "label": "YouTube 视频",
+      "matchAny": [
+        { "hosts": ["youtube.com", "youtube-nocookie.com"], "path": "/(watch|shorts/)" },
+        { "hosts": ["youtu.be"], "path": "/.+" }
+      ],
+      "extract": {
+        "og": true,
+        "state": {
+          "source": "ytInitialPlayerResponse",
+          "requirePath": "videoDetails.title",
+          "fields": {
+            "title": "{videoDetails.title}",
+            "cover": "{videoDetails.thumbnail.thumbnails[-1].url}",
+            "descLines": ["{videoDetails.author}", "{videoDetails.shortDescription}"]
+          }
+        }
+      }
+    },
+    {
+      "id": "bilibili-other",
+      "label": "B站专栏/直播/图文",
+      "matchAny": [
+        { "hosts": ["bilibili.com"], "path": "/(read|opus|festival)/" },
+        { "hosts": ["live.bilibili.com"] }
+      ],
+      "extract": { "og": true }
+    },
+    {
+      "id": "douyin",
+      "label": "抖音视频",
+      "match": { "hosts": ["douyin.com", "iesdouyin.com"], "path": "/(video|note)/" },
+      "extract": { "og": true }
+    },
+    {
+      "id": "tencent-video",
+      "label": "腾讯视频",
+      "match": { "hosts": ["v.qq.com"], "path": "/x/(cover|page)/" },
+      "extract": { "og": true }
+    },
+    {
+      "id": "iqiyi",
+      "label": "爱奇艺",
+      "match": { "hosts": ["iqiyi.com"], "path": "/v_" },
+      "extract": { "og": true }
+    },
+    {
+      "id": "youku",
+      "label": "优酷",
+      "matchAny": [
+        { "hosts": ["youku.com"], "path": "^/(v_show|v_)" },
+        { "hosts": ["youku.com"], "path": "^/video$", "query": { "vid": true } }
+      ],
+      "extract": { "og": true }
+    },
+    {
+      "id": "vimeo",
+      "label": "Vimeo",
+      "match": { "hosts": ["vimeo.com"], "path": "/\\d+" },
+      "extract": { "og": true }
+    },
+    {
+      "id": "twitch",
+      "label": "Twitch",
+      "match": { "hosts": ["twitch.tv"], "path": "/(videos/|clip/)" },
+      "extract": { "og": true }
+    },
+    {
+      "id": "qq-music",
+      "label": "QQ音乐",
+      "match": { "hosts": ["y.qq.com"], "path": "/n/ryqq/(songDetail|albumDetail)" },
+      "extract": { "og": true }
+    },
+    {
+      "id": "kugou",
+      "label": "酷狗音乐",
+      "match": { "hosts": ["kugou.com", "kugou.cn"], "path": "/(song|mixsong)" },
+      "extract": { "og": true }
+    },
+    {
+      "id": "spotify",
+      "label": "Spotify",
+      "match": { "hosts": ["open.spotify.com"] },
+      "extract": { "og": true }
+    },
+    {
+      "id": "soundcloud",
+      "label": "SoundCloud",
+      "match": { "hosts": ["soundcloud.com"] },
+      "extract": { "og": true }
+    },
+    {
+      "id": "weixin",
+      "label": "微信公众号文章",
+      "match": { "hosts": ["mp.weixin.qq.com"], "path": "/s" },
+      "extract": { "og": true }
+    },
+    {
+      "id": "zhihu",
+      "label": "知乎问答/专栏",
+      "matchAny": [
+        { "hosts": ["zhihu.com"], "path": "/(question|pin)/" },
+        { "hosts": ["zhuanlan.zhihu.com"], "path": "/p/" }
+      ],
+      "extract": { "og": true }
+    },
+    {
+      "id": "weibo",
+      "label": "微博",
+      "match": { "hosts": ["weibo.com", "m.weibo.cn"], "path": "/\\d+/|/status/" },
+      "extract": { "og": true }
+    },
+    {
+      "id": "xiaohongshu",
+      "label": "小红书",
+      "match": { "hosts": ["xiaohongshu.com"], "path": "/(explore/|discovery/item/)" },
+      "extract": { "og": true }
+    },
+    {
+      "id": "douban",
+      "label": "豆瓣条目",
+      "match": { "hosts": ["douban.com"], "path": "/subject/" },
+      "extract": { "og": true }
+    },
+    {
+      "id": "juejin",
+      "label": "掘金",
+      "match": { "hosts": ["juejin.cn"], "path": "/post/" },
+      "extract": { "og": true }
+    },
+    {
+      "id": "csdn",
+      "label": "CSDN 博客",
+      "match": { "hosts": ["csdn.net"], "path": "article/details/" },
+      "extract": { "og": true }
+    },
+    {
+      "id": "sspai",
+      "label": "少数派",
+      "match": { "hosts": ["sspai.com"], "path": "/post/" },
+      "extract": { "og": true }
+    },
+    {
+      "id": "jianshu",
+      "label": "简书",
+      "match": { "hosts": ["jianshu.com"], "path": "/p/" },
+      "extract": { "og": true }
+    },
+    {
+      "id": "stackoverflow",
+      "label": "Stack Overflow",
+      "match": { "hosts": ["stackoverflow.com"], "path": "/questions?/" },
+      "extract": { "og": true }
+    },
+    {
+      "id": "segmentfault",
+      "label": "思否 SegmentFault",
+      "match": { "hosts": ["segmentfault.com"], "path": "/(a|p)/" },
+      "extract": { "og": true }
+    },
+    {
+      "id": "v2ex",
+      "label": "V2EX",
+      "match": { "hosts": ["v2ex.com"], "path": "/t/" },
+      "extract": { "og": true }
+    },
+    {
+      "id": "gitlab",
+      "label": "GitLab 项目页",
+      "match": { "hosts": ["gitlab.com"], "path": "^/[^/]+/[^/]+/?$" },
+      "extract": { "og": true }
+    },
+    {
+      "id": "npm",
+      "label": "npm 包",
+      "match": { "hosts": ["npmjs.com"], "path": "/package/" },
+      "extract": { "og": true }
+    },
+    {
+      "id": "pypi",
+      "label": "PyPI 包",
+      "match": { "hosts": ["pypi.org"], "path": "/project/" },
+      "extract": { "og": true }
+    },
+    {
+      "id": "arxiv",
+      "label": "arXiv 论文",
+      "match": { "hosts": ["arxiv.org"], "path": "/abs/" },
+      "extract": { "og": true }
+    },
+    {
+      "id": "steam",
+      "label": "Steam 商店页",
+      "match": { "hosts": ["steampowered.com"], "path": "/app/" },
+      "extract": { "og": true }
+    }
+  ]
+}
