@@ -1,7 +1,7 @@
 {
   "name": "SimpShare 站点规则订阅",
   "author": "SimpShare",
-  "version": 4,
+  "version": 5,
   "updatedAt": "2026-09-04",
   "description": "GKD 风格的声明式站点规则：与应用主体分离，可独立更新。匹配(match/matchAny)决定规则命中；extract 决定标题/简介/封面的提取（og 为所有命中规则的兜底）；transforms 做字段变换；card 传入卡片渲染器。",
   "behavior": {
@@ -12,6 +12,22 @@
     "title": ["og:title", "twitter:title"],
     "description": ["og:description", "twitter:description", "description"],
     "image": ["og:image", "og:image:secure_url", "twitter:image", "twitter:image:src"]
+  },
+  "redirect": {
+    "rules": [
+      {
+        "match": "^https?://(?:www\\.)?bilibili\\.com/video/(BV[\\w-]+)",
+        "replace": "https://bilibilibb.com/video/$1",
+        "unmatch": "^https?://(?:www\\.)?bilibilibb\\.com/video/(BV[\\w-]+)",
+        "unreplace": "https://bilibili.com/video/$1"
+      },
+      {
+        "match": "^https?://b23\\.tv/([\\w-]+)",
+        "replace": "https://b23bb.tv/$1",
+        "unmatch": "^https?://b23bb\\.tv/([\\w-]+)",
+        "unreplace": "https://b23.tv/$1"
+      }
+    ]
   },
   "siteRules": [
     {
