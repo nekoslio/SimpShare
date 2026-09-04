@@ -46,7 +46,9 @@ public final class CardRenderer {
     /** 主入口：抓取元信息与图片，渲染卡片位图 */
     public static Bitmap render(Context context, String url) throws Exception {
         Rules.load(context.getAssets());
-        Rules.Meta meta = Rules.extract(url);
+        // 已被改写成展示域名的链接（如 bilibilibb.com）先还原回源站再匹配与抓取
+        String src = Rules.unRedirect(url);
+        Rules.Meta meta = Rules.extract(src);
         boolean night = (context.getResources().getConfiguration().uiMode
                 & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
 
@@ -67,7 +69,9 @@ public final class CardRenderer {
         // RGB_565：卡片完全不透明，内存减半（7.5MB → 3.8MB），
         // 降低生成期间的内存峰值，避免系统低内存查杀后台的源应用
         Bitmap out = Bitmap.createBitmap(W, H, Bitmap.Config.RGB_565);
-        draw(context, new Canvas(out), meta, cover, favicon, url, night);
+        // 卡片展示的链接与二维码按订阅 redirect.rules 改写（如 b23.tv → b23bb.tv）
+        String displayUrl = Rules.applyRedirect(src);
+        draw(context, new Canvas(out), meta, cover, favicon, src, displayUrl, night);
         if (cover != null) cover.recycle();
         if (favicon != null) favicon.recycle();
         return out;
@@ -76,7 +80,8 @@ public final class CardRenderer {
     /* ================= 版面绘制 ================= */
 
     private static void draw(Context c, Canvas canvas, Rules.Meta meta,
-                             Bitmap cover, Bitmap favicon, String url, boolean night) {
+                             Bitmap cover, Bitmap favicon, String srcUrl, String displayUrl,
+                             boolean night) {
         int bg = night ? Color.parseColor("#1C1B1F") : Color.WHITE;
         int titleColor = night ? Color.parseColor("#E6E1E9") : Color.parseColor("#1C1B1F");
         int descColor = night ? Color.parseColor("#CAC4D0") : Color.parseColor("#49454F");
@@ -86,7 +91,7 @@ public final class CardRenderer {
         canvas.drawColor(bg);
 
         // 顶部：站点图标 + 标题
-        drawFaviconTile(canvas, paint, meta, favicon, url, night, MARGIN, TITLE_Y, TILE);
+        drawFaviconTile(canvas, paint, meta, favicon, srcUrl, night, MARGIN, TITLE_Y, TILE);
 
         Paint titlePaint = new Paint(paint);
         titlePaint.setColor(titleColor);
@@ -101,7 +106,7 @@ public final class CardRenderer {
         boolean hasCover = cover != null && meta.hasCover;
         if (hasCover) {
             int qrX = W - MARGIN - QR_SIDE;
-            Qr.draw(canvas, url, qrX, CONTENT_Y + (CH - QR_SIDE) / 2, QR_SIDE);
+            Qr.draw(canvas, displayUrl, qrX, CONTENT_Y + (CH - QR_SIDE) / 2, QR_SIDE);
 
             float iw = cover.getWidth(), ih = cover.getHeight();
             float ar = iw / ih;
@@ -124,7 +129,7 @@ public final class CardRenderer {
             }
         } else {
             // 规则外 / 无封面：封面位大二维码，右下角二维码取消
-            Qr.draw(canvas, url, MARGIN, CONTENT_Y + (CH - QR_SIDE_BIG) / 2, QR_SIDE_BIG);
+            Qr.draw(canvas, displayUrl, MARGIN, CONTENT_Y + (CH - QR_SIDE_BIG) / 2, QR_SIDE_BIG);
             drawDesc(canvas, paint, meta.description, MARGIN + QR_SIDE_BIG + 64,
                     W - MARGIN - (MARGIN + QR_SIDE_BIG + 64), descColor);
         }
@@ -134,7 +139,7 @@ public final class CardRenderer {
         cap.setColor(descColor);
         cap.setTextSize(34f);
         cap.setTextAlign(Paint.Align.RIGHT);
-        String line = url == null ? "" : url;
+        String line = displayUrl == null ? "" : displayUrl;
         if (cap.measureText(line) > anchorRight() - MARGIN) {
             line = c.getString(R.string.url_too_long);
         }

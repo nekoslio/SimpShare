@@ -6,11 +6,17 @@
     <string name="flow_step1">在任意应用中打开网页，点击"分享"</string>
     <string name="flow_step2">在系统分享面板中选择"SimpShare"</string>
     <string name="flow_step3">自动生成卡片图片，并唤起系统分享发送给好友</string>
-    <string name="flow_footer">本页面即应用的全部界面：卡片生成由系统分享入口触发，无需手动操作。</string>
+    <string name="flow_footer">卡片生成由系统分享入口触发，平时无需打开本应用。</string>
     <string name="generating">正在生成分享卡片…</string>
     <string name="error_title">生成失败</string>
     <string name="error_no_url">分享内容中没有找到链接</string>
     <string name="error_generate">生成失败：%1$s</string>
     <string name="share_chooser_title">分享卡片图片</string>
     <string name="url_too_long">url过长，请扫描二维码</string>
+    <string name="rules_title">站点规则订阅</string>
+    <string name="rules_import">导入规则文件</string>
+    <string name="rules_reset">恢复内置</string>
+    <string name="rules_imported">已导入规则：%1$s</string>
+    <string name="rules_reset_done">已恢复内置规则</string>
+    <string name="rules_import_failed">导入失败：%1$s</string>
 </resources>

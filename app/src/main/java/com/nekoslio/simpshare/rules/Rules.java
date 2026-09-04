@@ -52,56 +52,166 @@ public final class Rules {
         public String ruleId;
     }
 
+    /** 卡片展示链接改写规则（redirect.rules，与扩展端订阅文件同构） */
+    private static final class Redirect {
+        final Pattern match;
+        final String replace;
+        final Pattern unmatch;
+        final String unreplace;
+
+        Redirect(Pattern match, String replace, Pattern unmatch, String unreplace) {
+            this.match = match;
+            this.replace = replace;
+            this.unmatch = unmatch;
+            this.unreplace = unreplace;
+        }
+    }
+
+    /** 一次解析得到的完整规则集（先解析后替换，导入失败不影响当前规则） */
+    private static final class Parsed {
+        final List<Rule> rules = new ArrayList<>();
+        final List<Redirect> redirects = new ArrayList<>();
+        String name = "";
+        String version = "";
+    }
+
     private static final List<Rule> RULES = new ArrayList<>();
+    private static final List<Redirect> REDIRECTS = new ArrayList<>();
+    private static boolean customSource;
+    private static String sourceName = "";
+    private static String sourceVersion = "";
 
     private Rules() {
     }
 
     public static synchronized void load(AssetManager assets) throws Exception {
         if (!RULES.isEmpty()) return;
-        try (InputStream in = assets.open("rules.json")) {
-            byte[] buf = new byte[1024];
-            StringBuilder sb = new StringBuilder();
-            int n;
-            while ((n = in.read(buf)) > 0) sb.append(new String(buf, 0, n, StandardCharsets.UTF_8));
-            JSONObject root = new JSONObject(sb.toString());
-            JSONArray arr = root.getJSONArray("siteRules");
-            for (int i = 0; i < arr.length(); i++) {
-                JSONObject r = arr.getJSONObject(i);
-                Rule rule = new Rule();
-                rule.id = r.optString("id");
-                rule.label = r.optString("label");
-                JSONObject card = r.optJSONObject("card");
-                if (card != null) {
-                    rule.containCover = card.optBoolean("containCover", false);
-                    rule.hideDesc = card.optBoolean("hideDesc", false);
-                }
-                JSONArray alts = r.has("matchAny") ? r.getJSONArray("matchAny") : null;
-                if (alts == null && r.has("match")) {
-                    alts = new JSONArray().put(r.getJSONObject("match"));
-                }
-                if (alts != null) {
-                    for (int j = 0; j < alts.length(); j++) {
-                        JSONObject m = alts.getJSONObject(j);
-                        Match mm = new Match();
-                        JSONArray hosts = m.optJSONArray("hosts");
-                        if (hosts != null) {
-                            mm.hosts = new String[hosts.length()];
-                            for (int k = 0; k < hosts.length(); k++) mm.hosts[k] = hosts.getString(k);
-                        }
-                        String path = m.optString("path", null);
-                        if (path != null) mm.path = Pattern.compile(path, Pattern.CASE_INSENSITIVE);
-                        String excl = m.optString("pathExclude", null);
-                        if (excl != null) mm.exclude = Pattern.compile(excl, Pattern.CASE_INSENSITIVE);
-                        mm.requireQueryVid = m.optJSONObject("query") != null
-                                && m.optJSONObject("query").has("vid");
-                        mm.pathAndHash = "pathAndHash".equals(m.optString("pathSource"));
-                        rule.alts.add(mm);
+        install(parse(readText(assets.open("rules.json"))), false);
+    }
+
+    /** 导入规则订阅文件（扩展端同构 rules.json），解析成功才替换当前规则集 */
+    public static synchronized void replace(String json) throws Exception {
+        install(parse(json), true);
+    }
+
+    /** 丢弃导入的规则，恢复内置订阅 */
+    public static synchronized void reset(AssetManager assets) throws Exception {
+        install(parse(readText(assets.open("rules.json"))), false);
+    }
+
+    private static void install(Parsed p, boolean custom) {
+        RULES.clear();
+        RULES.addAll(p.rules);
+        REDIRECTS.clear();
+        REDIRECTS.addAll(p.redirects);
+        customSource = custom;
+        sourceName = p.name;
+        sourceVersion = p.version;
+    }
+
+    /** 规则页状态文案 */
+    public static synchronized String describe() {
+        String label = customSource
+                ? (sourceName.isEmpty() ? "自定义规则" : sourceName)
+                : "内置订阅";
+        StringBuilder sb = new StringBuilder("当前使用：").append(label);
+        if (!sourceVersion.isEmpty()) sb.append(" v").append(sourceVersion);
+        sb.append("\n").append(RULES.size()).append(" 个站点 · 链接改写 ")
+                .append(REDIRECTS.size()).append(" 条");
+        if (customSource) sb.append("\n来源：导入的规则文件");
+        return sb.toString();
+    }
+
+    /**
+     * 卡片展示链接改写（如 b23.tv/x → b23bb.tv/x）；只影响展示与二维码，未命中原样返回。
+     */
+    public static synchronized String applyRedirect(String url) {
+        if (url == null) return null;
+        for (Redirect r : REDIRECTS) {
+            Matcher m = r.match.matcher(url);
+            if (m.find()) return m.replaceFirst(r.replace);
+        }
+        return url;
+    }
+
+    /** 展示链接反向还原为源链接（抓取与规则匹配用），未命中原样返回 */
+    public static synchronized String unRedirect(String url) {
+        if (url == null) return null;
+        for (Redirect r : REDIRECTS) {
+            if (r.unmatch == null) continue;
+            Matcher m = r.unmatch.matcher(url);
+            if (m.find()) return m.replaceFirst(r.unreplace);
+        }
+        return url;
+    }
+
+    private static String readText(InputStream in) throws Exception {
+        byte[] buf = new byte[1024];
+        StringBuilder sb = new StringBuilder();
+        int n;
+        try (InputStream cin = in) {
+            while ((n = cin.read(buf)) > 0) sb.append(new String(buf, 0, n, StandardCharsets.UTF_8));
+        }
+        return sb.toString();
+    }
+
+    private static Parsed parse(String json) throws Exception {
+        Parsed p = new Parsed();
+        JSONObject root = new JSONObject(json);
+        JSONArray arr = root.getJSONArray("siteRules");
+        p.name = root.optString("name", "");
+        p.version = root.optString("version", "");
+        for (int i = 0; i < arr.length(); i++) {
+            JSONObject r = arr.getJSONObject(i);
+            Rule rule = new Rule();
+            rule.id = r.optString("id");
+            rule.label = r.optString("label");
+            JSONObject card = r.optJSONObject("card");
+            if (card != null) {
+                rule.containCover = card.optBoolean("containCover", false);
+                rule.hideDesc = card.optBoolean("hideDesc", false);
+            }
+            JSONArray alts = r.has("matchAny") ? r.getJSONArray("matchAny") : null;
+            if (alts == null && r.has("match")) {
+                alts = new JSONArray().put(r.getJSONObject("match"));
+            }
+            if (alts != null) {
+                for (int j = 0; j < alts.length(); j++) {
+                    JSONObject m = alts.getJSONObject(j);
+                    Match mm = new Match();
+                    JSONArray hosts = m.optJSONArray("hosts");
+                    if (hosts != null) {
+                        mm.hosts = new String[hosts.length()];
+                        for (int k = 0; k < hosts.length(); k++) mm.hosts[k] = hosts.getString(k);
                     }
+                    String path = m.optString("path", null);
+                    if (path != null) mm.path = Pattern.compile(path, Pattern.CASE_INSENSITIVE);
+                    String excl = m.optString("pathExclude", null);
+                    if (excl != null) mm.exclude = Pattern.compile(excl, Pattern.CASE_INSENSITIVE);
+                    mm.requireQueryVid = m.optJSONObject("query") != null
+                            && m.optJSONObject("query").has("vid");
+                    mm.pathAndHash = "pathAndHash".equals(m.optString("pathSource"));
+                    rule.alts.add(mm);
                 }
-                RULES.add(rule);
+            }
+            p.rules.add(rule);
+        }
+        JSONObject redirect = root.optJSONObject("redirect");
+        JSONArray rrs = redirect == null ? null : redirect.optJSONArray("rules");
+        if (rrs != null) {
+            for (int i = 0; i < rrs.length(); i++) {
+                JSONObject r = rrs.getJSONObject(i);
+                String match = r.optString("match", null);
+                if (match == null) continue;
+                String unmatch = r.optString("unmatch", null);
+                p.redirects.add(new Redirect(
+                        Pattern.compile(match),
+                        r.optString("replace", ""),
+                        unmatch == null ? null : Pattern.compile(unmatch),
+                        r.optString("unreplace", "")));
             }
         }
+        return p;
     }
 
     public static synchronized Rule match(String urlStr) {

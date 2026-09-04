@@ -26,7 +26,7 @@ final class FlowView {
     }
 
     /** 流程页内容本体（不含滚动容器）：error 页需要在同一 LinearLayout 上追加错误卡片 */
-    private static LinearLayout instructionsColumn(Context c) {
+    static LinearLayout instructionsColumn(Context c) {
         LinearLayout root = column(c);
         root.setPadding(dp(c, 24), dp(c, 32), dp(c, 24), dp(c, 32));
 
@@ -145,7 +145,7 @@ final class FlowView {
 
     /* ---------- 内部 ---------- */
 
-    private static View step(Context c, String no, int textRes) {
+    static View step(Context c, String no, int textRes) {
         LinearLayout row = new LinearLayout(c);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
@@ -181,13 +181,13 @@ final class FlowView {
         return t;
     }
 
-    private static LinearLayout column(Context c) {
+    static LinearLayout column(Context c) {
         LinearLayout l = new LinearLayout(c);
         l.setOrientation(LinearLayout.VERTICAL);
         return l;
     }
 
-    private static ScrollView wrapInScroll(View content) {
+    static ScrollView wrapInScroll(View content) {
         ScrollView s = new ScrollView(content.getContext());
         s.setFillViewport(true);
         s.addView(content);
@@ -198,20 +198,20 @@ final class FlowView {
         v.setLayoutParams(new LinearLayout.LayoutParams(w, h));
     }
 
-    private static LinearLayout.LayoutParams margin(int l, int t, int r, int b) {
+    static LinearLayout.LayoutParams margin(int l, int t, int r, int b) {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         lp.setMargins(l, t, r, b);
         return lp;
     }
 
-    private static int attrColor(Context c, int attr) {
+    static int attrColor(Context c, int attr) {
         TypedValue tv = new TypedValue();
         c.getTheme().resolveAttribute(attr, tv, true);
         return tv.data;
     }
 
-    private static int dp(Context c, int v) {
+    static int dp(Context c, int v) {
         return (int) TypedValue.applyDimension(
                 TypedValue.COMPLEX_UNIT_DIP, v, c.getResources().getDisplayMetrics());
     }
