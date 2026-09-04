@@ -118,6 +118,7 @@ Chrome / Edge（Chromium 内核）**Manifest V3** 扩展，最低要求 Chrome 1
 | `extract.api` | 声明式 Web API：URL 模板 `{id}`（query/hash 取参）+ 多分支 `whenPath` + JSON 路径字段映射 |
 | `transforms` | `stripRegex`、`forceHttps`、`appendQuery`；`titleFromPath` 从 URL 捕获组组装标题 |
 | `card` | 传给渲染器：`containCover`（封面不裁切）、`hideDesc`（不绘制简介） |
+| `redirect.rules` | 正则改写：`match`/`replace` 把分享卡片与二维码展示的 URL 改写为干净形式（如 `bilibili.com/video/BV..` → `bilibilibb.com/video/BV..`），`unmatch`/`unreplace` 提交/编辑时反向映射回源 URL 以匹配规则；目标站点自行去除追踪参数 |
 
 未适配站点：`behavior.ogForUnmatchedSites: true` 时，不在规则内的站点也会读取 `<head>`
 的 `<meta>` 标签获取封面，取到即用封面模式，取不到则降级二维码模式。

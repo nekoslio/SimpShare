@@ -19,6 +19,7 @@
   };
 
   let data = null;
+  let redirectRules = [];
   let compiled = [];
   let behavior = { ogForUnmatchedSites: true };
   let metaTags = DEFAULT_META_TAGS;
@@ -120,6 +121,16 @@
       const alts = r.matchAny || (r.match ? [r.match] : []);
       return { raw: r, alts: alts.map(compileMatch) };
     });
+    redirectRules = (d.redirect && Array.isArray(d.redirect.rules))
+      ? d.redirect.rules.map(function (r) {
+          return {
+            match: r.match ? new RegExp(r.match) : null,
+            replace: r.replace || '',
+            unmatch: r.unmatch ? new RegExp(r.unmatch) : null,
+            unreplace: r.unreplace || ''
+          };
+        }).filter(function (r) { return r.match; })
+      : [];
     loadPending = null;
   }
 
@@ -310,6 +321,31 @@
     return s;
   }
 
+
+  /* ---------------- URL 改写（分享卡片 URL / 二维码） ----------------
+   * 规则订阅文件顶层的 redirect.rules 声明正则改写规则：
+   *   match/replace    源 URL → 展示 URL（如 bilibili.com/video/BV.. → bilibilibb.com/video/BV..）
+   *   unmatch/unreplace 展示 URL → 源 URL（提交/编辑时恢复源域名以便规则匹配与抓取）
+   * 仅改写分享卡片上展示的 URL 与二维码内容；元信息抓取仍使用源 URL。
+   * 目标站点自行负责去除追踪参数。未命中任何规则时原样返回。
+   */
+  function applyRedirect(urlStr) {
+    for (const r of redirectRules) {
+      const out = urlStr.replace(r.match, r.replace);
+      if (out !== urlStr) return out;
+    }
+    return urlStr;
+  }
+
+  function unRedirect(urlStr) {
+    for (const r of redirectRules) {
+      if (!r.unmatch) continue;
+      const out = urlStr.replace(r.unmatch, r.unreplace);
+      if (out !== urlStr) return out;
+    }
+    return urlStr;
+  }
+
   global.SimpShareRules = {
     load: load,
     loadOnce: loadOnce,
@@ -322,6 +358,8 @@
     extractFromValues: extractFromValues,
     runApi: runApi,
     applyTransforms: applyTransforms,
+    applyRedirect: applyRedirect,
+    unRedirect: unRedirect,
     metaSelectors: metaSelectors,
     allowUnmatchedCover: allowUnmatchedCover,
     get data() { return data; }

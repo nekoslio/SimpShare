@@ -35,6 +35,8 @@
     </div>
     <h2>站点规则匹配自检</h2>
     <div id="rules-result"></div>
+    <h2>域名改写自检（applyRedirect / unRedirect）</h2>
+    <div id="redirect-result"></div>
   </div>
 </div>
 
@@ -74,6 +76,18 @@ const SAMPLES = [
       coverDataUrl: makeSampleCover(1280, 720, '16:9 视频封面', '#1E88E5', '#0D47A1'),
       faviconDataUrl: makeSampleFavicon('B', 350),
       url: 'https://www.bilibili.com/video/BV1GJ411x7h7/?spm_id_from=333.788',
+      hasCover: true
+    }
+  },
+  {
+    name: '已改写链接（右下角显示"已改写"药丸）',
+    meta: {
+      title: '【官方 MV】Anti-Hero | Taylor Swift 4K 修复版 高码率全景声',
+      description: 'UP主：TaylorSwift中国\n该链接的域名已被正则规则改写，右下角 URL 标注上方显示"已改写"药丸，目标站点负责去除追踪参数。',
+      coverDataUrl: makeSampleCover(1280, 720, '16:9 视频封面', '#1E88E5', '#0D47A1'),
+      faviconDataUrl: makeSampleFavicon('B', 350),
+      url: 'https://bilibilibb.com/video/BV1GJ411x7h7/',
+      rewritten: true,
       hasCover: true
     }
   },
@@ -209,6 +223,33 @@ const CASES = [
   }
   rulesHtml += '</table>';
   document.getElementById('rules-result').innerHTML = rulesHtml;
+
+  // 域名改写自检：卡片/输入框展示干净 URL，提交时反向映射回源 URL（正则形式）
+  const REDIRECT_CASES = [
+    ['https://www.bilibili.com/video/BV1GJ411x7h7/', 'https://bilibilibb.com/video/BV1GJ411x7h7/'],
+    ['https://b23.tv/abcDEF', 'https://b23bb.tv/abcDEF'],
+    ['https://github.com/microsoft/vscode', 'https://github.com/microsoft/vscode'],
+    ['https://example.com/whatever', 'https://example.com/whatever']
+  ];
+  const UNREDIRECT_CASES = [
+    ['https://www.bilibilibb.com/video/BV1GJ411x7h7/', 'https://bilibili.com/video/BV1GJ411x7h7/'],
+    ['https://b23bb.tv/abcDEF', 'https://b23.tv/abcDEF']
+  ];
+  let rdHtml = '<table>';
+  for (const [src, target] of REDIRECT_CASES) {
+    const got = SimpShareRules.applyRedirect(src);
+    const ok = got === target;
+    rdHtml += '<tr><td><code>' + src + '</code></td><td>→</td><td><code>' + got + '</code></td><td>' +
+      (ok ? '<span class="ok">✓</span>' : '<span class="bad">✗ 期望 ' + target + '</span>') + '</td></tr>';
+  }
+  for (const [clean, target] of UNREDIRECT_CASES) {
+    const back = SimpShareRules.unRedirect(clean);
+    const ok = back === target;
+    rdHtml += '<tr><td><code>' + clean + '</code></td><td>(un)</td><td><code>' + back + '</code></td><td>' +
+      (ok ? '<span class="ok">✓</span>' : '<span class="bad">✗ 期望 ' + target + '</span>') + '</td></tr>';
+  }
+  rdHtml += '</table>';
+  document.getElementById('redirect-result').innerHTML = rdHtml;
 })();
 </script>
 </body>

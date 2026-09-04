@@ -244,6 +244,18 @@
       color: var(--sq-on-surface);
     }
     .field input::placeholder { color: var(--sq-hint); }
+    .rewritten {
+      flex: none;
+      font-size: 11px;
+      line-height: 1;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: var(--sq-primary-container);
+      color: var(--sq-on-primary-container);
+      font-weight: 500;
+      letter-spacing: .1px;
+      white-space: nowrap;
+    }
     .icon-btn {
       flex: none;
       width: 40px; height: 40px;
@@ -319,6 +331,7 @@
         <div class="editor">
           <div class="field">
             ${ICONS.link}
+            <span class="rewritten" hidden>已改写</span>
             <input type="text" spellcheck="false" placeholder="输入要分享的链接，回车提交" />
             <button class="icon-btn ok" title="提交并重新生成">${ICONS.check}</button>
           </div>
@@ -339,6 +352,7 @@
   const editor = $('.editor');
   const field = $('.field');
   const urlInput = $('.field input');
+  const rewrittenTag = $('.rewritten');
   const okBtn = $('.icon-btn.ok');
   const snackbar = $('.snackbar');
 
@@ -499,8 +513,10 @@
 
   async function buildMeta(url) {
     await ensureRules().catch(() => { /* 规则加载失败时走通用 meta 兜底 */ });
-    const rule = SimpShareRules.match(url);
-    const samePage = isSamePage(url);
+    // 输入框/卡片展示的是改写后的干净域名，先转回源域名用于规则匹配与抓取
+    const src = SimpShareRules.unRedirect(url);
+    const rule = SimpShareRules.match(src);
+    const samePage = isSamePage(src);
     let base;
 
     if (samePage) {
@@ -520,30 +536,32 @@
         }
       }
       if (rule && rule.extract && rule.extract.api) {
-        const r = await sendBg({ type: 'RUN_RULE_API', url: url });
+        const r = await sendBg({ type: 'RUN_RULE_API', url: src });
         if (r && r.ok && r.fields) mergeFields(base, r.fields);
       }
-      SimpShareRules.applyTransforms(rule, base, url);
+      SimpShareRules.applyTransforms(rule, base, src);
     } else {
       // 自定义链接：后台抓取 HTML / API 完成提取（含规则变换）
-      const r = await sendBg({ type: 'EXTRACT_URL', url: url });
+      const r = await sendBg({ type: 'EXTRACT_URL', url: src });
       base = (r && r.ok && r.meta)
         ? r.meta
         : { title: url, description: '', coverUrl: null, faviconCandidates: [] };
     }
 
     const coverDataUrl = base.coverUrl
-      ? ((await sendBg({ type: 'FETCH_IMAGE', url: base.coverUrl, referer: url })).dataUrl || null)
+      ? ((await sendBg({ type: 'FETCH_IMAGE', url: base.coverUrl, referer: src })).dataUrl || null)
       : null;
-    const faviconDataUrl = await fetchFaviconData(base, url);
+    const faviconDataUrl = await fetchFaviconData(base, src);
 
     // 未适配站点也允许从 head <meta> 取封面（behavior.ogForUnmatchedSites）
+    const displayUrl = SimpShareRules.applyRedirect(src);
     const m = {
-      title: base.title || url,
+      title: base.title || src,
       description: base.description || '',
       coverDataUrl: coverDataUrl,
       faviconDataUrl: faviconDataUrl,
-      url: url,
+      url: displayUrl,
+      rewritten: displayUrl !== src,
       hasCover: !!coverDataUrl && (rule ? true : SimpShareRules.allowUnmatchedCover())
     };
     // 站点专属卡片渲染提示（如 GitHub：封面不裁切、不绘制简介模块）
@@ -569,6 +587,7 @@
       const m = await getMetaFor(url);
       if (t !== genToken || !panelOpen) return;
       meta = m;
+      rewrittenTag.hidden = !m.rewritten;
       if (document.activeElement !== urlInput) urlInput.value = m.url;
       await SimpShareRender.drawCard(previewCanvas, m, 0.5);
       if (t !== genToken || !panelOpen) return;
