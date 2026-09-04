@@ -35,6 +35,8 @@
     </div>
     <h2>站点规则匹配自检</h2>
     <div id="rules-result"></div>
+    <h2>域名改写自检（applyRedirect / unRedirect）</h2>
+    <div id="redirect-result"></div>
   </div>
 </div>
 
@@ -209,6 +211,33 @@ const CASES = [
   }
   rulesHtml += '</table>';
   document.getElementById('rules-result').innerHTML = rulesHtml;
+
+  // 域名改写自检：卡片/输入框展示干净域名，提交时反向映射回源域名
+  const REDIRECT_CASES = [
+    ['https://www.bilibili.com/video/BV1GJ411x7h7/', 'https://www.bilibilibb.com/video/BV1GJ411x7h7/'],
+    ['https://b23.tv/abcDEF', 'https://b23bb.tv/abcDEF'],
+    ['https://github.com/microsoft/vscode', 'https://github.com/microsoft/vscode'],
+    ['https://example.com/whatever', 'https://example.com/whatever']
+  ];
+  const REWRITTEN = [
+    'https://www.bilibilibb.com/video/BV1GJ411x7h7/',
+    'https://b23bb.tv/abcDEF'
+  ];
+  let rdHtml = '<table>';
+  for (const [src, target] of REDIRECT_CASES) {
+    const got = SimpShareRules.applyRedirect(src);
+    const ok = got === target;
+    rdHtml += '<tr><td><code>' + src + '</code></td><td>→</td><td><code>' + got + '</code></td><td>' +
+      (ok ? '<span class="ok">✓</span>' : '<span class="bad">✗ 期望 ' + target + '</span>') + '</td></tr>';
+  }
+  for (const clean of REWRITTEN) {
+    const back = SimpShareRules.unRedirect(clean);
+    const ok = back === clean.replace('bilibilibb.com', 'bilibili.com').replace('b23bb.tv', 'b23.tv');
+    rdHtml += '<tr><td><code>' + clean + '</code></td><td>(un)</td><td><code>' + back + '</code></td><td>' +
+      (ok ? '<span class="ok">✓</span>' : '<span class="bad">✗ 期望 ' + clean.replace('bilibilibb.com', 'bilibili.com').replace('b23bb.tv', 'b23.tv') + '</span>') + '</td></tr>';
+  }
+  rdHtml += '</table>';
+  document.getElementById('redirect-result').innerHTML = rdHtml;
 })();
 </script>
 </body>

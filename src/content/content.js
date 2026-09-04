@@ -499,8 +499,10 @@
 
   async function buildMeta(url) {
     await ensureRules().catch(() => { /* 规则加载失败时走通用 meta 兜底 */ });
-    const rule = SimpShareRules.match(url);
-    const samePage = isSamePage(url);
+    // 输入框/卡片展示的是改写后的干净域名，先转回源域名用于规则匹配与抓取
+    const src = SimpShareRules.unRedirect(url);
+    const rule = SimpShareRules.match(src);
+    const samePage = isSamePage(src);
     let base;
 
     if (samePage) {
@@ -520,30 +522,30 @@
         }
       }
       if (rule && rule.extract && rule.extract.api) {
-        const r = await sendBg({ type: 'RUN_RULE_API', url: url });
+        const r = await sendBg({ type: 'RUN_RULE_API', url: src });
         if (r && r.ok && r.fields) mergeFields(base, r.fields);
       }
-      SimpShareRules.applyTransforms(rule, base, url);
+      SimpShareRules.applyTransforms(rule, base, src);
     } else {
       // 自定义链接：后台抓取 HTML / API 完成提取（含规则变换）
-      const r = await sendBg({ type: 'EXTRACT_URL', url: url });
+      const r = await sendBg({ type: 'EXTRACT_URL', url: src });
       base = (r && r.ok && r.meta)
         ? r.meta
         : { title: url, description: '', coverUrl: null, faviconCandidates: [] };
     }
 
     const coverDataUrl = base.coverUrl
-      ? ((await sendBg({ type: 'FETCH_IMAGE', url: base.coverUrl, referer: url })).dataUrl || null)
+      ? ((await sendBg({ type: 'FETCH_IMAGE', url: base.coverUrl, referer: src })).dataUrl || null)
       : null;
-    const faviconDataUrl = await fetchFaviconData(base, url);
+    const faviconDataUrl = await fetchFaviconData(base, src);
 
     // 未适配站点也允许从 head <meta> 取封面（behavior.ogForUnmatchedSites）
     const m = {
-      title: base.title || url,
+      title: base.title || src,
       description: base.description || '',
       coverDataUrl: coverDataUrl,
       faviconDataUrl: faviconDataUrl,
-      url: url,
+      url: SimpShareRules.applyRedirect(src),
       hasCover: !!coverDataUrl && (rule ? true : SimpShareRules.allowUnmatchedCover())
     };
     // 站点专属卡片渲染提示（如 GitHub：封面不裁切、不绘制简介模块）
