@@ -193,9 +193,57 @@
 
   /* ---------------- 卡片绘制 ---------------- */
 
+  /**
+   * 裁掉图标四周的纯色 / 透明留白，让内容铺满位图（cover 铺满外框前必须调用，
+   * 否则 logo 只占外框中间一小块）。返回裁剪后的 canvas 或原图。
+   */
+  function trimFaviconBorder(img) {
+    const w = img.naturalWidth || img.width || 0;
+    const h = img.naturalHeight || img.height || 0;
+    if (!w || !h || w < 12 || h < 12) return img;
+    const cv = document.createElement('canvas');
+    cv.width = w;
+    cv.height = h;
+    const cx = cv.getContext('2d', { willReadFrequently: true });
+    cx.drawImage(img, 0, 0);
+    let data;
+    try { data = cx.getImageData(0, 0, w, h).data; } catch (e) { return img; }
+    const bg = [data[0], data[1], data[2], data[3]];
+    const bgT = bg[3] < 16;
+    let minX = w, minY = h, maxX = -1, maxY = -1;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        const content = bgT
+          ? data[i + 3] >= 16
+          : (Math.abs(data[i] - bg[0]) + Math.abs(data[i + 1] - bg[1])
+            + Math.abs(data[i + 2] - bg[2]) + Math.abs(data[i + 3] - bg[3])) > 48;
+        if (!content) continue;
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+    if (maxX < 0) return img;   // 全透明
+    const inset = Math.max(1, Math.round(Math.max(w, h) * 0.015));
+    minX = Math.max(0, minX - inset);
+    minY = Math.max(0, minY - inset);
+    maxX = Math.min(w - 1, maxX + inset);
+    maxY = Math.min(h - 1, maxY + inset);
+    const cw = maxX - minX + 1, ch = maxY - minY + 1;
+    if (cw >= w * 0.92 && ch >= h * 0.92) return img;   // 内容已铺满，无需裁
+    const out = document.createElement('canvas');
+    out.width = cw;
+    out.height = ch;
+    out.getContext('2d').drawImage(cv, minX, minY, cw, ch, 0, 0, cw, ch);
+    return out;
+  }
+
   function drawFaviconTile(ctx, meta, img, x, y, s, pal) {
     const host = hostOf(meta.url);
     const hue = hashStr(host) % 360;
+    if (img) img = trimFaviconBorder(img);
     roundRectPath(ctx, x, y, s, s, 22);
     if (pal.tileBgMode === 'dark') {
       ctx.fillStyle = 'hsl(' + hue + ', 28%, 24%)';
