@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "SimpShare — 网页分享卡片",
+  "short_name": "SimpShare",
+  "version": "1.0.0",
+  "description": "一键为当前网页生成 21:9 精美分享卡片：标题 + 封面 + 简介 + 二维码，复制到剪贴板即可分享。",
+  "minimum_chrome_version": "111",
+  "icons": {
+    "16": "src/assets/icons/icon16.png",
+    "32": "src/assets/icons/icon32.png",
+    "48": "src/assets/icons/icon48.png",
+    "128": "src/assets/icons/icon128.png"
+  },
+  "permissions": ["storage", "clipboardWrite", "offscreen"],
+  "host_permissions": ["http://*/*", "https://*/*"],
+  "background": {
+    "service_worker": "src/background/service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["src/content/main-world.js"],
+      "run_at": "document_idle",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["src/lib/qrcode.js", "src/lib/rules.js", "src/lib/render.js", "src/content/content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["src/rules/rules.json"],
+      "matches": ["http://*/*", "https://*/*"]
+    }
+  ]
+}

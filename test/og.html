@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>未适配站点 og 封面测试页</title>
+<!-- 模拟任意未适配站点：head 中的 meta 标签应能提供封面/标题/简介 -->
+<meta property="og:title" content="这是一个未适配站点的文章标题">
+<meta property="og:description" content="未适配站点应从 head 里的 meta 标签读取封面图、标题与简介，成功后使用封面模式渲染分享卡片。">
+<meta property="og:image" content="assets/og-sample.png">
+</head>
+<body style="font-family:system-ui;max-width:640px;margin:40px auto">
+<h1>未适配站点 og 封面测试页</h1>
+<p>本页不属于任何规则站点（127.0.0.1 不在 rules.json 中）。插件应通过 head &lt;meta&gt; 标签取到 og:image 封面并以封面模式渲染。</p>
+</body>
+</html>

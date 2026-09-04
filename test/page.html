@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>SimpShare 分享卡片渲染测试</title>
+<style>
+  body { font-family: Roboto, "Segoe UI", system-ui, "Microsoft YaHei", sans-serif; background: #F3EDF7; margin: 24px; }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  h1 { font-size: 18px; color: #1C1B1F; font-weight: 600; }
+  h2 { font-size: 14px; color: #49454F; font-weight: 500; margin: 8px 0; }
+  .card { background: #fff; border-radius: 16px; padding: 16px; margin-bottom: 20px;
+          box-shadow: 0 4px 8px 3px rgba(0,0,0,.1), 0 1px 3px rgba(0,0,0,.2); }
+  canvas.card-cv { width: 100%; display: block; border-radius: 12px; border: 1px solid #E7E5E4; }
+  .qr-test { display: flex; gap: 16px; align-items: center; }
+  .qr-test canvas { width: 220px; height: 220px; image-rendering: pixelated; border: 1px solid #E7E5E4; }
+  .ok { color: #1B5E20; font-weight: 600; }
+  .bad { color: #B3261E; font-weight: 600; }
+  code { background: #F3EDF7; padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+</style>
+<script src="../src/lib/qrcode.js"></script>
+<script src="../src/lib/rules.js"></script>
+<script src="../src/lib/render.js"></script>
+<script src="https://unpkg.com/jsqr@1.4.0/dist/jsQR.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <h1>SimpShare 分享卡片渲染测试（设计稿 2100×900，21:9）</h1>
+  <h2><label><input type="checkbox" id="dark-toggle"> 深色模式渲染预览（实际插件跟随浏览器 prefers-color-scheme）</label></h2>
+  <div id="gallery"></div>
+  <div class="card">
+    <h2>二维码回读自检（qrcode-generator 生成 → jsQR 解码比对）</h2>
+    <div class="qr-test">
+      <canvas id="qr-cv" width="440" height="440"></canvas>
+      <div id="qr-result">运行中…</div>
+    </div>
+    <h2>站点规则匹配自检</h2>
+    <div id="rules-result"></div>
+  </div>
+</div>
+
+<script>
+/* ---------- 样例封面（页内 canvas 生成，避免外网依赖） ---------- */
+function makeSampleCover(w, h, text, c1, c2) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const x = c.getContext('2d');
+  const g = x.createLinearGradient(0, 0, w, h);
+  g.addColorStop(0, c1); g.addColorStop(1, c2);
+  x.fillStyle = g; x.fillRect(0, 0, w, h);
+  x.fillStyle = 'rgba(255,255,255,.9)';
+  x.font = '600 ' + Math.round(h * 0.16) + 'px sans-serif';
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillText(text, w / 2, h / 2);
+  return c.toDataURL('image/png');
+}
+function makeSampleFavicon(letter, hue) {
+  const c = document.createElement('canvas');
+  c.width = 64; c.height = 64;
+  const x = c.getContext('2d');
+  x.fillStyle = 'hsl(' + hue + ',70%,50%)';
+  x.beginPath(); x.arc(32, 32, 30, 0, Math.PI * 2); x.fill();
+  x.fillStyle = '#fff'; x.font = '700 34px sans-serif';
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillText(letter, 32, 34);
+  return c.toDataURL('image/png');
+}
+
+const SAMPLES = [
+  {
+    name: 'Bilibili 视频（规则内：封面 + 右下角二维码）',
+    meta: {
+      title: '【官方 MV】Anti-Hero | Taylor Swift 4K 修复版 高码率全景声',
+      description: 'UP主：TaylorSwift中国\n《Midnights》专辑主打歌官方 MV，4K HDR 修复。本视频对画面细节与色彩进行了逐帧重建，并重新混录了全景声音轨，欢迎佩戴耳机观看。',
+      coverDataUrl: makeSampleCover(1280, 720, '16:9 视频封面', '#1E88E5', '#0D47A1'),
+      faviconDataUrl: makeSampleFavicon('B', 350),
+      url: 'https://www.bilibili.com/video/BV1GJ411x7h7/?spm_id_from=333.788',
+      hasCover: true
+    }
+  },
+  {
+    name: '网易云音乐 单曲（规则内：方形封面自适应宽度）',
+    meta: {
+      title: '晴天',
+      description: '歌手：周杰伦\n专辑：《叶惠美》',
+      coverDataUrl: makeSampleCover(800, 800, '1:1 歌曲封面', '#43A047', '#1B5E20'),
+      faviconDataUrl: makeSampleFavicon('网', 10),
+      url: 'https://music.163.com/song?id=186016&id2=x',
+      hasCover: true
+    }
+  },
+  {
+    name: 'GitHub 项目页（规则内：2:1 社交卡片封面）',
+    meta: {
+      title: 'microsoft/vscode',
+      description: 'Visual Studio Code — 代码编辑器。重新定义代码编辑，开源、跨平台、内置 Git 与调试器。',
+      coverDataUrl: makeSampleCover(1280, 640, '2:1 社交卡片', '#5E35B1', '#311B92'),
+      faviconDataUrl: makeSampleFavicon('G', 220),
+      url: 'https://github.com/microsoft/vscode',
+      hasCover: true
+    }
+  },
+  {
+    name: '规则外站点（封面位变为二维码，右下角二维码取消）',
+    meta: {
+      title: '某篇没有封面规则的普通文章页面标题',
+      description: '这是一段网页简介。规则外站点不展示内容封面，原本封面位置改为展示当前链接的二维码，右下角的小二维码取消，右侧简介保持不变。',
+      coverDataUrl: null,
+      faviconDataUrl: makeSampleFavicon('W', 25),
+      url: 'https://example.com/articles/2026/hello-world',
+      hasCover: false
+    }
+  },
+  {
+    name: '超长链接（右下角自动显示"url过长，请扫描二维码"）',
+    meta: {
+      title: '带超长追踪参数的分享页',
+      description: '当链接过长、按右下角锚点绘制会与其他控件冲突时，URL 标注自动替换为提示文案，引导扫码获取完整链接。',
+      coverDataUrl: makeSampleCover(1280, 720, '16:9 视频封面', '#1E88E5', '#0D47A1'),
+      faviconDataUrl: makeSampleFavicon('L', 120),
+      url: 'https://www.bilibili.com/video/BV1bHtd6CESR/?spm_id_from=333.788.0.0&utm_source=share&utm_medium=pc_mobile_common&utm_campaign=long_link_test&vd_source=0123456789abcdef0123456789abcdef&share_source=copy_web&share_medium=iphone&bbid=8A38B0C2-1234-5678-9ABC-DEF012345678&csource=shared&share_times=3&unique_k=veryLongToken1234567890',
+      hasCover: true
+    }
+  }
+];
+
+const gallery = document.getElementById('gallery');
+const cards = SAMPLES.map(function (s) {
+  const card = document.createElement('div');
+  card.className = 'card';
+  const h = document.createElement('h2');
+  h.textContent = s.name;
+  const cv = document.createElement('canvas');
+  cv.className = 'card-cv';
+  card.appendChild(h); card.appendChild(cv);
+  gallery.appendChild(card);
+  return cv;
+});
+function renderAll() {
+  const theme = document.getElementById('dark-toggle').checked ? 'dark' : 'light';
+  SAMPLES.forEach(function (s, i) { SimpShareRender.drawCard(cards[i], s.meta, 0.5, theme); });
+}
+document.getElementById('dark-toggle').addEventListener('change', renderAll);
+renderAll();
+
+/* ---------- 二维码回读 ---------- */
+const QR_TEXT = 'https://www.bilibili.com/video/BV1GJ411x7h7/?spm_id_from=333.788';
+const qrCv = document.getElementById('qr-cv');
+const qrCtx = qrCv.getContext('2d');
+const qr = SimpShareRender.makeQR(QR_TEXT);
+const n = qr.getModuleCount();
+const m = 440 / (n + 8);
+qrCtx.fillStyle = '#fff'; qrCtx.fillRect(0, 0, 440, 440);
+qrCtx.fillStyle = '#000';
+for (let r = 0; r < n; r++) for (let c = 0; c < n; c++)
+  if (qr.isDark(r, c)) qrCtx.fillRect((c + 4) * m, (r + 4) * m, m + 0.6, m + 0.6);
+
+function reportQR(text, ok) {
+  document.getElementById('qr-result').innerHTML =
+    (ok ? '<span class="ok">✓ 解码成功</span>' : '<span class="bad">✗ 解码失败</span>') +
+    '<br><code>' + text + '</code><br>版本 v' +
+    ((n - 17) / 4) + ' · ' + n + '×' + n + ' 模块';
+}
+if (typeof jsQR === 'function') {
+  const d = qrCtx.getImageData(0, 0, 440, 440);
+  const res = jsQR(d.data, 440, 440);
+  reportQR(QR_TEXT, !!(res && res.data === QR_TEXT));
+} else {
+  reportQR(QR_TEXT, null);
+  document.getElementById('qr-result').innerHTML += '<br>（未加载 jsQR，仅人工目检）';
+}
+
+/* ---------- 规则匹配自检（规则来自 GKD 风格订阅文件 src/rules/rules.json） ---------- */
+const CASES = [
+  ['https://www.bilibili.com/video/BV1GJ411x7h7/', 'bilibili-video', true],
+  ['https://www.bilibili.com/', null, false],
+  ['https://music.163.com/song?id=186016', 'netease-music', true],
+  ['https://music.163.com/#/song?id=186016', 'netease-music', true],
+  ['https://music.163.com/#/playlist?id=7534018385', 'netease-music', true],
+  ['https://github.com/microsoft/vscode', 'github', true],
+  ['https://github.com/settings/profile', null, false],
+  ['https://github.com/', null, false],
+  ['https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'youtube', true],
+  ['https://v.qq.com/x/cover/mzc00200.html', 'tencent-video', true],
+  ['https://mp.weixin.qq.com/s/abc123', 'weixin', true],
+  ['https://juejin.cn/post/7123456789', 'juejin', true],
+  ['https://www.zhihu.com/question/123456', 'zhihu', true],
+  ['https://zhuanlan.zhihu.com/p/654321', 'zhihu', true],
+  ['https://store.steampowered.com/app/1091500/', 'steam', true],
+  ['https://v.youku.com/video?vid=XNjU2MzMxODA4MA==', 'youku', true],
+  ['https://www.kugou.com/mixsong/ftkz2rbb.html', 'kugou', true],
+  ['https://example.com/whatever', null, false]
+];
+(async () => {
+  try {
+    const res = await fetch('../src/rules/rules.json');
+    SimpShareRules.loadFromData(await res.json());
+  } catch (e) {
+    document.getElementById('rules-result').textContent = '规则订阅文件加载失败: ' + e;
+    return;
+  }
+  let rulesHtml = '<table>';
+  for (const [url, expectId, expectCover] of CASES) {
+    const r = SimpShareRules.match(url);
+    const id = r ? r.id : null;
+    const cover = SimpShareRules.isCoverSite(url);
+    const ok = id === expectId && cover === expectCover;
+    rulesHtml += '<tr><td><code>' + url + '</code></td><td>' + (id || '—') + '</td><td>' +
+      (ok ? '<span class="ok">✓</span>' : '<span class="bad">✗ 期望 ' + expectId + '/' + expectCover + '</span>') + '</td></tr>';
+  }
+  rulesHtml += '</table>';
+  document.getElementById('rules-result').innerHTML = rulesHtml;
+})();
+</script>
+</body>
+</html>
