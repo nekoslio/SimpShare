@@ -478,14 +478,16 @@
     const sels = SimpShareRules.metaSelectors();
     const g = (sel) => { const el = document.querySelector(sel); return el ? (el.getAttribute('content') || '').trim() : ''; };
     const first = (list) => { for (const s of list) { const v = g(s); if (v) return v; } return ''; };
+    // 部分站点（如 MediaWiki 系）的 og:title 自带 HTML 标记，DOM 解码实体后会以文本形式出现，需剥离
+    const clean = (s) => s.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
     // og:image 常为相对路径，解析为绝对 URL 供后台抓取
     let coverUrl = first(sels.image) || null;
     if (coverUrl) {
       try { coverUrl = new URL(coverUrl, location.href).href; } catch (e) { /* 保持原值 */ }
     }
     return {
-      title: first(sels.title) || document.title || '',
-      description: first(sels.description),
+      title: clean(first(sels.title) || document.title || ''),
+      description: clean(first(sels.description)),
       coverUrl: coverUrl
     };
   }

@@ -32,6 +32,11 @@ function decodeEntities(s) {
   });
 }
 
+/** meta 文本清洗：部分站点（如 MediaWiki 系）的 og:title 自带 HTML 标记，解码实体后需剥离标签并压平空白 */
+function cleanMetaText(s) {
+  return decodeEntities(s).replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+}
+
 function absUrl(u, base) {
   if (!u) return null;
   try { return new URL(u, base).href; } catch (e) { return /^https?:\/\//i.test(u) ? u : null; }
@@ -169,8 +174,8 @@ function genericMetaFromHtml(html, baseUrl) {
   let coverUrl = getMeta(html, ['og:image', 'og:image:secure_url', 'twitter:image', 'twitter:image:src']);
   if (!coverUrl) coverUrl = getMetaByItemprop(html, 'image');
   return {
-    title: decodeEntities(title).slice(0, 300),
-    description: decodeEntities(description).slice(0, 2000),
+    title: cleanMetaText(title).slice(0, 300),
+    description: cleanMetaText(description).slice(0, 2000),
     coverUrl: absUrl(decodeEntities(coverUrl), baseUrl),
     faviconCandidates: faviconCandidatesOf(html, baseUrl)
   };
