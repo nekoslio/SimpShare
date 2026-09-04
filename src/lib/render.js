@@ -201,7 +201,7 @@
       ctx.fillStyle = 'hsl(' + hue + ', 28%, 24%)';
       ctx.fill();
       if (img) {
-        drawContainImage(ctx, img, x + s * 0.18, y + s * 0.18, s * 0.64, s * 0.64);
+        drawContainImage(ctx, img, x + s * 0.14, y + s * 0.14, s * 0.72, s * 0.72);
       } else {
         const letter = (host.replace(/^www\./, '')[0] || 'W').toUpperCase();
         ctx.fillStyle = 'hsl(' + hue + ', 65%, 78%)';
@@ -216,7 +216,7 @@
       ctx.fillStyle = 'hsl(' + hue + ', 60%, 92%)';
       ctx.fill();
       if (img) {
-        drawContainImage(ctx, img, x + s * 0.18, y + s * 0.18, s * 0.64, s * 0.64);
+        drawContainImage(ctx, img, x + s * 0.14, y + s * 0.14, s * 0.72, s * 0.72);
       } else {
         const letter = (host.replace(/^www\./, '')[0] || 'W').toUpperCase();
         ctx.fillStyle = 'hsl(' + hue + ', 45%, 36%)';
@@ -241,6 +241,8 @@
     canvas.height = Math.round(H * scale);
     const ctx = canvas.getContext('2d');
     ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
 

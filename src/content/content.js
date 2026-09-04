@@ -445,15 +445,32 @@
   /* ============================ 元信息提取 ============================ */
 
   function collectFaviconCandidates() {
-    const urls = [];
+    // 候选按质量打分排序：URL 含 favicon 优先，其次 link[sizes] 声明的尺寸
+    const scored = [];
     for (const l of document.querySelectorAll('link[href]')) {
       const rel = (l.getAttribute('rel') || '').toLowerCase();
-      if (/icon|apple-touch/.test(rel)) {
-        try { urls.push(new URL(l.getAttribute('href'), location.href).href); } catch (e) { /* ignore */ }
+      if (!/icon|apple-touch/.test(rel)) continue;
+      let href;
+      try { href = new URL(l.getAttribute('href'), location.href).href; } catch (e) { continue; }
+      if (scored.some(s => s.url === href)) continue;
+      let score = 0;
+      if (href.toLowerCase().includes('favicon')) score += 2000;
+      const sizes = l.getAttribute('sizes');
+      if (sizes) {
+        if (sizes.toLowerCase().includes('any')) score += 600;
+        let m, best = 0;
+        const re = /(\d+)x(\d+)/gi;
+        while ((m = re.exec(sizes))) best = Math.max(best, Math.min(+m[1], +m[2]));
+        score += Math.min(best, 512);
       }
+      scored.push({ url: href, score });
     }
-    try { urls.push(new URL('/favicon.ico', location.origin).href); } catch (e) { /* ignore */ }
-    return urls.slice(0, 6);
+    try {
+      const originIco = new URL('/favicon.ico', location.origin).href;
+      if (!scored.some(s => s.url === originIco)) scored.push({ url: originIco, score: 16 });
+    } catch (e) { /* ignore */ }
+    scored.sort((a, b) => b.score - a.score);
+    return scored.map(s => s.url).slice(0, 6);
   }
 
   function ogFromDom() {
@@ -487,15 +504,42 @@
     if (fields.coverUrl) base.coverUrl = fields.coverUrl;
   }
 
+  /** 解码测量候选尺寸后择优：正方形、分辨率高、URL 含 favicon 者得分更高 */
+  function measureImage(dataUrl) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve({ w: img.naturalWidth || 0, h: img.naturalHeight || 0, svg: img.naturalWidth === 0 });
+      img.onerror = () => resolve(null);
+      img.src = dataUrl;
+    });
+  }
+
   async function fetchFaviconData(meta, url) {
     const origin = (() => { try { return new URL(url).origin; } catch (e) { return ''; } })();
     if (origin && faviconCache.has(origin)) return faviconCache.get(origin);
-    const candidates = (meta.faviconCandidates || []).slice(0, 3);
+    const candidates = (meta.faviconCandidates || []).slice(0, 4);
     try { candidates.push(new URL('/favicon.ico', url).href); } catch (e) { /* ignore */ }
-    let dataUrl = null;
+
+    const ok = [];
     for (const u of candidates) {
+      if (!u || ok.some(o => o.url === u)) continue;
       const r = await sendBg({ type: 'FETCH_IMAGE', url: u });
-      if (r.ok && r.dataUrl && r.dataUrl.length < 1200000) { dataUrl = r.dataUrl; break; }
+      if (r.ok && r.dataUrl && r.dataUrl.length < 1200000) ok.push({ url: u, dataUrl: r.dataUrl });
+    }
+    let dataUrl = null, bestScore = -1;
+    for (const item of ok) {
+      const dim = await measureImage(item.dataUrl);
+      if (!dim) continue;
+      const { w, h } = dim;
+      if (w < 8 || h < 8) continue;
+      const big = Math.max(w, h), small = Math.min(w, h);
+      if (big / small > 2.5) continue;
+      let score = (item.url.toLowerCase().includes('favicon') ? 2000 : 0)
+        + (dim.svg ? 800 : 0)
+        + (w === h ? 1000 : 0)
+        + (small >= 32 ? 500 : small >= 16 ? 200 : 0)
+        + Math.min(small, 256);
+      if (score > bestScore) { bestScore = score; dataUrl = item.dataUrl; }
     }
     if (origin) faviconCache.set(origin, dataUrl);
     return dataUrl;
