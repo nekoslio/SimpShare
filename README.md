@@ -10,17 +10,20 @@ SimpShare 还有 [Android 版](https://github.com/nekoslio/SimpShare/tree/androi
 ![B 站视频分享卡片（深色）](docs/screenshots/card-bilibili-dark.png)
 
 B 站链接会按内置规则改写成镜像域名（`bilibili.com/video/BV…` →
-`bilibilibb.com/video/BV…`），短链 `b23.tv` 同理，卡片上的二维码跟着一起改，
-右下角的"已改写"标记说明这张卡的链接被动过；抓标题封面仍用原始链接。
+`bilibilibb.com/video/BV…`），短链 `b23.tv` 同理，卡片上的链接标注和二维码
+跟着一起改，编辑器的链接框会显示"已改写"标记；抓标题封面仍用原始链接。
+
+GitHub 仓库页的封面用官方社交卡片，不裁切、在封面区水平居中；og 图缺失或
+抓取失败时自动改用 `opengraph.githubassets.com` 现生成的卡片图。
 
 ## 安装
 
 从 [Releases](https://github.com/nekoslio/SimpShare/releases) 下载
-`simpshare-1.0.2.zip` 并解压，打开 `chrome://extensions`（Edge 是
+`simpshare-1.0.3.zip` 并解压，打开 `chrome://extensions`（Edge 是
 `edge://extensions`），打开右上角**开发者模式**，点**加载已解压的扩展程序**，
 选中解压出的文件夹，最后固定到工具栏。
 
-`simpshare-1.0.2.crx` 是带签名的打包产物，供企业策略部署使用。新版 Chrome
+`simpshare-1.0.3.crx` 是带签名的打包产物，供企业策略部署使用。新版 Chrome
 不允许直接拖入安装非商店扩展，拖入会报 `CRX_REQUIRED_PROOF_MISSING`，
 这是浏览器限制，不是包坏了。
 
