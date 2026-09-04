@@ -314,10 +314,10 @@ public final class Rules {
         if (ogTitle.length() == 0) {
             Matcher m = Pattern.compile("<title[^>]*>([\\s\\S]*?)</title>", Pattern.CASE_INSENSITIVE)
                     .matcher(html);
-            if (m.find()) ogTitle = decodeEntities(m.group(1).trim());
+            if (m.find()) ogTitle = m.group(1).trim();
         }
-        meta.title = decodeEntities(ogTitle);
-        meta.description = decodeEntities(desc);
+        meta.title = cleanText(ogTitle);
+        meta.description = cleanText(desc);
         if (cover.length() > 0) {
             try { meta.coverUrl = new URL(new URL(baseUrl), decodeEntities(cover)).toString(); }
             catch (Exception e) { meta.coverUrl = null; }
@@ -504,6 +504,12 @@ public final class Rules {
     }
 
     /* ================= 工具 ================= */
+
+    /** meta 文本清洗：部分站点（如 MediaWiki 系）的 og:title 自带 HTML 标记，解码实体后需剥离标签并压平空白 */
+    private static String cleanText(String s) {
+        if (s == null) return "";
+        return decodeEntities(s).replaceAll("<[^>]*>", "").replaceAll("\\s+", " ").trim();
+    }
 
     private static String getMeta(String html, String... keys) {
         Matcher tags = Pattern.compile("<meta\\b[^>]*>", Pattern.CASE_INSENSITIVE).matcher(html);
