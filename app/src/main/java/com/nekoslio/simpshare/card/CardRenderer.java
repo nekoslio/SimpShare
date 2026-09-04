@@ -50,12 +50,12 @@ public final class CardRenderer {
         boolean night = (context.getResources().getConfiguration().uiMode
                 & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
 
-        // 封面（降采样解码）
+        // 封面（降采样解码；低内存占用优先）
         Bitmap cover = null;
         if (meta.coverUrl != null) {
             try {
                 byte[] bytes = Http.fetchBytes(meta.coverUrl, url, 8_000_000);
-                cover = decodeDownsampled(bytes, 1600);
+                cover = decodeDownsampled(bytes, 1280);
             } catch (Exception e) {
                 cover = null;
             }
@@ -63,7 +63,9 @@ public final class CardRenderer {
         // favicon（失败回退首字母色块）
         Bitmap favicon = fetchFavicon(context, meta);
 
-        Bitmap out = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888);
+        // RGB_565：卡片完全不透明，内存减半（7.5MB → 3.8MB），
+        // 降低生成期间的内存峰值，避免系统低内存查杀后台的源应用
+        Bitmap out = Bitmap.createBitmap(W, H, Bitmap.Config.RGB_565);
         draw(context, new Canvas(out), meta, cover, favicon, url, night);
         if (cover != null) cover.recycle();
         if (favicon != null) favicon.recycle();
@@ -261,6 +263,7 @@ public final class CardRenderer {
         while (o.outWidth / (sample * 2) >= targetW) sample *= 2;
         BitmapFactory.Options o2 = new BitmapFactory.Options();
         o2.inSampleSize = sample;
+        o2.inPreferredConfig = Bitmap.Config.RGB_565;   // 封面照片无透明，内存减半
         return BitmapFactory.decodeByteArray(bytes, 0, bytes.length, o2);
     }
 
@@ -279,7 +282,14 @@ public final class CardRenderer {
             Bitmap b = null;
             try {
                 byte[] bytes = Http.fetchBytes(u, meta.url, 1_000_000);
-                b = BitmapFactory.decodeStream(new ByteArrayInputStream(bytes));
+                BitmapFactory.Options o = new BitmapFactory.Options();
+                o.inJustDecodeBounds = true;
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.length, o);
+                int sample = 1;
+                while (Math.max(o.outWidth, o.outHeight) / (sample * 2) >= 256) sample *= 2;
+                BitmapFactory.Options o2 = new BitmapFactory.Options();
+                o2.inSampleSize = sample;
+                b = BitmapFactory.decodeByteArray(bytes, 0, bytes.length, o2);
             } catch (Exception e) { /* 尝试下一个候选 */ }
             if (b == null) continue;
             int w = b.getWidth(), h = b.getHeight();
