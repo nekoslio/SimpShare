@@ -176,6 +176,17 @@ public final class Rules {
 
         // 规则内且封面抓取条件满足 → 封面模式；未适配站点也允许 og 封面
         meta.hasCover = meta.coverUrl != null;
+
+        // favicon 候选：结构化提取路径若未解析过 HTML，则至少回退站点根 favicon
+        if (meta.faviconCandidates == null) {
+            if (html != null) {
+                meta.faviconCandidates = faviconCandidates(html, url);
+            } else {
+                List<String> fb = new ArrayList<>();
+                try { fb.add(new URL(new URL(url), "/favicon.ico").toString()); } catch (Exception e) { /* ignore */ }
+                meta.faviconCandidates = fb;
+            }
+        }
         return meta;
     }
 
@@ -279,17 +290,42 @@ public final class Rules {
     /* ================= favicon ================= */
 
     public static List<String> faviconCandidates(String html, String baseUrl) {
-        List<String> out = new ArrayList<>();
+        // 候选按质量打分排序：URL 含 favicon 优先，其次 link[sizes] 声明的尺寸
+        List<String> urls = new ArrayList<>();
+        List<int[]> scored = new ArrayList<>();   // [score, index]
         Matcher tags = Pattern.compile("<link\\b[^>]*>", Pattern.CASE_INSENSITIVE).matcher(html);
-        while (tags.find() && out.size() < 5) {
+        while (tags.find() && urls.size() < 8) {
             String tag = tags.group();
             String rel = attrOf(tag, "rel");
-            if (rel == null || !(rel.toLowerCase().contains("icon") || rel.toLowerCase().contains("apple-touch"))) continue;
+            if (rel == null) continue;
+            String relLow = rel.toLowerCase();
+            if (!relLow.contains("icon") && !relLow.contains("apple-touch")) continue;
             String href = attrOf(tag, "href");
             if (href == null || href.isEmpty()) continue;
-            try { out.add(new URL(new URL(baseUrl), decodeEntities(href)).toString()); } catch (Exception e) { /* ignore */ }
+            String abs;
+            try { abs = new URL(new URL(baseUrl), decodeEntities(href)).toString(); }
+            catch (Exception e) { continue; }
+            if (urls.contains(abs)) continue;
+            int score = 0;
+            if (abs.toLowerCase().contains("favicon")) score += 2000;
+            String sizes = attrOf(tag, "sizes");
+            if (sizes != null) {
+                if (sizes.toLowerCase().contains("any")) score += 600;
+                Matcher m = Pattern.compile("(\\d+)x(\\d+)", Pattern.CASE_INSENSITIVE).matcher(sizes);
+                int best = 0;
+                while (m.find()) {
+                    best = Math.max(best, Math.min(Integer.parseInt(m.group(1)), Integer.parseInt(m.group(2))));
+                }
+                score += Math.min(best, 512);
+            }
+            urls.add(abs);
+            scored.add(new int[]{score, urls.size() - 1});
         }
-        try { out.add(new URL(new URL(baseUrl), "/favicon.ico").toString()); } catch (Exception e) { /* ignore */ }
+        try { urls.add(new URL(new URL(baseUrl), "/favicon.ico").toString()); } catch (Exception e) { /* ignore */ }
+        scored.sort((a, b) -> Integer.compare(b[0], a[0]));
+        List<String> out = new ArrayList<>();
+        for (int[] s : scored) out.add(urls.get(s[1]));
+        for (int i = scored.size(); i < urls.size(); i++) out.add(urls.get(i));
         return out;
     }
 

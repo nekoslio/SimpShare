@@ -3,12 +3,11 @@ package com.nekoslio.simpshare;
 import android.content.Context;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
-import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
-import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
@@ -74,16 +73,43 @@ final class FlowView {
         return wrapInScroll(root);
     }
 
-    /** 分享处理中的加载页 */
+    /** 分享处理中的加载页：居中的 M3 圆角卡片，内含加载动画与文案 */
     static View loading(Context c) {
-        LinearLayout root = column(c);
-        root.setGravity(Gravity.CENTER);
-        ProgressBar bar = new ProgressBar(c);
-        root.addView(bar, margin(0, 0, 0, dp(c, 16)));
-        TextView t = text(c, R.string.generating, 15,
-                attrColor(c, com.google.android.material.R.attr.colorOnSurfaceVariant));
-        root.addView(t);
-        return wrapInScroll(root);
+        FrameLayout root = new FrameLayout(c);
+
+        MaterialCardView card = new MaterialCardView(c);
+        FrameLayout.LayoutParams cardLp = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER);
+        cardLp.setMargins(dp(c, 24), dp(c, 24), dp(c, 24), dp(c, 24));
+        card.setLayoutParams(cardLp);
+        card.setRadius(dp(c, 28));
+        card.setCardElevation(dp(c, 3));
+        card.setCardBackgroundColor(attrColor(c, com.google.android.material.R.attr.colorSurfaceContainerHigh));
+
+        LinearLayout inner = column(c);
+        inner.setGravity(Gravity.CENTER_HORIZONTAL);
+        int pad = dp(c, 32);
+        inner.setPadding(pad, pad, pad, pad);
+
+        com.google.android.material.progressindicator.CircularProgressIndicator bar =
+                new com.google.android.material.progressindicator.CircularProgressIndicator(c);
+        inner.addView(bar);
+
+        TextView t = new TextView(c);
+        t.setText(R.string.generating);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        t.setTextColor(attrColor(c, com.google.android.material.R.attr.colorOnSurface));
+        t.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams tLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        tLp.setMargins(0, dp(c, 20), 0, 0);
+        t.setLayoutParams(tLp);
+        inner.addView(t);
+
+        card.addView(inner);
+        root.addView(card);
+        return root;
     }
 
     /** 生成失败：流程 + 错误信息 */
@@ -181,10 +207,4 @@ final class FlowView {
                 TypedValue.COMPLEX_UNIT_DIP, v, c.getResources().getDisplayMetrics());
     }
 
-    @SuppressWarnings("unused")
-    private static void unused() {
-        if (TextUtils.isEmpty(null)) {
-            // 保持 androidx.text 引用，避免误删依赖
-        }
-    }
 }

@@ -163,7 +163,7 @@ public final class CardRenderer {
         paint.setColor(ColorUtils.HSLToColor(new float[]{hue, night ? 0.28f : 0.60f, night ? 0.24f : 0.92f}));
         canvas.drawPath(r, paint);
         if (favicon != null) {
-            drawContain(canvas, paint, favicon, x + s * 0.18f, y + s * 0.18f, s * 0.64f, s * 0.64f);
+            drawContain(canvas, paint, favicon, x + s * 0.14f, y + s * 0.14f, s * 0.72f, s * 0.72f);
         } else {
             String letter = host.startsWith("www.") ? host.substring(4) : host;
             letter = letter.isEmpty() ? "W" : letter.substring(0, 1).toUpperCase();
@@ -189,6 +189,7 @@ public final class CardRenderer {
 
     private static void drawContain(Canvas canvas, Paint paint, Bitmap b,
                                     float x, float y, float w, float h) {
+        paint.setFilterBitmap(true);
         float s = Math.min(w / b.getWidth(), h / b.getHeight());
         float dw = b.getWidth() * s, dh = b.getHeight() * s;
         canvas.drawBitmap(b, x + (w - dw) / 2f, y + (h - dh) / 2f, paint);
@@ -251,6 +252,7 @@ public final class CardRenderer {
         return BitmapFactory.decodeByteArray(bytes, 0, bytes.length, o2);
     }
 
+    /** 解码全部候选并择优：URL 含 favicon、正方形、分辨率高者得分更高（避免偏大/偏小的图标） */
     private static Bitmap fetchFavicon(Context c, Rules.Meta meta) {
         List<String> candidates = meta.faviconCandidates;
         if (candidates == null) {
@@ -259,13 +261,30 @@ public final class CardRenderer {
                 candidates.add(new java.net.URL(new java.net.URL(meta.url), "/favicon.ico").toString());
             } catch (Exception e) { /* ignore */ }
         }
+        Bitmap best = null;
+        int bestScore = -1;
         for (String u : candidates) {
+            Bitmap b = null;
             try {
                 byte[] bytes = Http.fetchBytes(u, meta.url, 1_000_000);
-                Bitmap b = BitmapFactory.decodeStream(new ByteArrayInputStream(bytes));
-                if (b != null && b.getWidth() >= 8 && b.getHeight() >= 8) return b;
+                b = BitmapFactory.decodeStream(new ByteArrayInputStream(bytes));
             } catch (Exception e) { /* 尝试下一个候选 */ }
+            if (b == null) continue;
+            int w = b.getWidth(), h = b.getHeight();
+            int big = Math.max(w, h), small = Math.min(w, h);
+            if (small < 8 || big / (float) small > 2.5f) { b.recycle(); continue; }
+            int score = (w == h ? 1000 : 0)
+                    + (small >= 32 ? 500 : small >= 16 ? 200 : 0)
+                    + (u.toLowerCase().contains("favicon") ? 2000 : 0)
+                    + Math.min(small, 256);
+            if (score > bestScore) {
+                if (best != null) best.recycle();
+                best = b;
+                bestScore = score;
+            } else {
+                b.recycle();
+            }
         }
-        return null;
+        return best;
     }
 }
