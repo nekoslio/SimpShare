@@ -199,7 +199,9 @@ public final class CardRenderer {
         float dw = b.getWidth() * scale, dh = b.getHeight() * scale;
         canvas.save();
         canvas.clipPath(roundRect(x, y, w, h, radius));
-        canvas.drawBitmap(b, x + (w - dw) / 2f, y + (h - dh) / 2f, paint);
+        // 必须用目标矩形重载才真正缩放；(left, top) 重载按原始尺寸绘制，
+        // 小图标会缩在角落（fav 32x32 直接以 1:1 画在 88 色块左上）
+        canvas.drawBitmap(b, null, new android.graphics.RectF(x, y, x + dw, y + dh), paint);
         canvas.restore();
     }
 
