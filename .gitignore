@@ -1,0 +1,11 @@
+# 子项目工作树（各自分支内已有 .gitignore）
+/extensions/
+/android/
+
+# 本地构建工具链与签名密钥
+/.build-tools/
+
+# 系统
+.DS_Store
+Thumbs.db
+*.log
