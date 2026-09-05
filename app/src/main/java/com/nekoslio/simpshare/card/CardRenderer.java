@@ -179,9 +179,19 @@ public final class CardRenderer {
         Paint p = new Paint(paint);
         p.setColor(color);
         p.setTextSize(DESC_FONT);
-        List<String> lines = wrap(p, text, w, DESC_MAX_LINES);
+        // 多请求一行用于判断是否截断；截断时最后一行以省略号收尾
+        List<String> lines = wrap(p, text, w, DESC_MAX_LINES + 1);
         if (lines.isEmpty()) return;
-        float y0 = CONTENT_Y + Math.max(0, (CH - lines.size() * DESC_LH) / 2f) + DESC_FONT * 0.86f;
+        boolean truncated = lines.size() > DESC_MAX_LINES;
+        if (truncated) {
+            lines = new ArrayList<>(lines.subList(0, DESC_MAX_LINES));
+            String last = lines.get(DESC_MAX_LINES - 1);
+            while (last.length() > 1 && p.measureText(last + "…") > w) {
+                last = last.substring(0, last.length() - 1);
+            }
+            lines.set(DESC_MAX_LINES - 1, last + "…");
+        }
+        float y0 = CONTENT_Y + Math.max(0, (CH - DESC_MAX_LINES * DESC_LH) / 2f) + DESC_FONT * 0.86f;
         for (int i = 0; i < lines.size(); i++) {
             canvas.drawText(lines.get(i), x, y0 + i * DESC_LH, p);
         }

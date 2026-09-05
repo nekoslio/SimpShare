@@ -400,6 +400,48 @@
       }
     },
     {
+      "id": "jd-item",
+      "label": "京东商品",
+      "note": "PC 商品页 CSR 无 og；render 无头捕获渲染后的标题（去【行情 报价 价格 评测】样板后缀）与商品首图。u.jd.com / 3.cn 短链 HTTP 302 直达商品页",
+      "matchAny": [
+        { "hosts": ["jd.com"], "path": "^/\\d+\\.html$" },
+        { "hosts": ["jd.com"], "path": "/product/" },
+        { "hosts": ["u.jd.com"] },
+        { "hosts": ["3.cn"] }
+      ],
+      "render": { "coverFromDom": true },
+      "extract": { "og": true },
+      "transforms": [{ "field": "title", "stripRegex": "\\s*【行情[^】]*】-京东\\s*$" }]
+    },
+    {
+      "id": "taobao-item",
+      "label": "淘宝/天猫商品",
+      "note": "网页端强制登录（未登录 302 到登录页）；render 无头捕获登录态渲染后的标题与商品首图；m.tb.cn / tb.cn 短链经跳转落到商品页；shareHint 表示 Android 端可用分享文本里的【标题】兜底",
+      "matchAny": [
+        { "hosts": ["taobao.com"], "path": "/item.htm", "query": { "id": true } },
+        { "hosts": ["tmall.com"], "path": "/item.htm", "query": { "id": true } },
+        { "hosts": ["m.tb.cn"] },
+        { "hosts": ["tb.cn"] }
+      ],
+      "render": { "coverFromDom": true },
+      "shareHint": true,
+      "extract": { "og": true },
+      "transforms": [{ "field": "title", "stripRegex": "\\s*-\\s*(tmall\\.com天猫|淘宝网|淘宝)\\s*$" }]
+    },
+    {
+      "id": "pdd-item",
+      "label": "拼多多商品",
+      "note": "网页端强制登录（未登录 302 到登录页）；render 无头捕获登录态渲染后的标题与商品首图；p.pinduoduo.com 等分享短链经跳转落到商品页；shareHint 表示 Android 端可用分享文本兜底",
+      "matchAny": [
+        { "hosts": ["yangkeduo.com"], "path": "/goods" },
+        { "hosts": ["pinduoduo.com"], "path": "/goods" },
+        { "hosts": ["p.pinduoduo.com"] }
+      ],
+      "render": { "coverFromDom": true },
+      "shareHint": true,
+      "extract": { "og": true }
+    },
+    {
       "id": "coolapk",
       "label": "酷安动态",
       "note": "网页端对无追踪参数的链接只渲染扫码落地页；从酷安 App 分享出的链接带 ?s=shareToken，服务端会渲染完整页面（真实标题 + 帖子首图）。coverFromHtml 从 HTML 里抠帖子首图当封面，裸链接降级二维码模式；shareHint 表示 Android 端可用分享文本里的【标题】兜底",
@@ -417,7 +459,10 @@
         { "hosts": ["goofish.com"], "path": "/item" },
         { "hosts": ["goofish.com"], "path": "/p/" }
       ],
-      "render": { "coverFromDom": true },
+      "render": {
+        "coverFromDom": true,
+        "descFromDom": { "selector": "[class*=\"desc--\"]:not([class*=\"price\"])", "stripTitle": "_闲鱼", "clip": 160 }
+      },
       "shareHint": true,
       "extract": { "og": true },
       "transforms": [

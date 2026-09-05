@@ -5,6 +5,7 @@ import android.graphics.Color;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.text.TextUtils;
 import android.webkit.JsResult;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
@@ -66,14 +67,18 @@ public final class HeadlessCapture {
 
     /**
      * 阻塞式捕获（内部切主线程）。minMs：快照稳定后仍至少等待的毫秒数
-     * （兜底慢验证跳转，如百度网盘提取码页的自动验证）。超时或失败返回已有快照或 null；
-     * 调用方在失败时回退普通抓取链路。
+     * （兜底慢验证跳转，如百度网盘提取码页的自动验证）。
+     * descSelector / descStripTitle / descClip：描述文本的 DOM 提取（descFromDom 规则）——
+     * og 简介缺失时按选择器取文本最长的节点，剥离与标题重复的前缀，clip 截断加省略号；
+     * descSelector 为 null 时跳过。超时或失败返回已有快照或 null，调用方回退普通抓取链路。
      */
-    public static Captured capture(Context context, String url, long timeoutMs, long minMs) {
+    public static Captured capture(Context context, String url, long timeoutMs, long minMs,
+                                   String descSelector, String descStripTitle, int descClip) {
         final AtomicReference<Captured> out = new AtomicReference<>();
         final CountDownLatch latch = new CountDownLatch(1);
         Handler main = new Handler(Looper.getMainLooper());
-        main.post(() -> runCapture(context.getApplicationContext(), url, timeoutMs, Math.max(minMs, 0), main, out, latch));
+        main.post(() -> runCapture(context.getApplicationContext(), url, timeoutMs, Math.max(minMs, 0),
+                descSelector, descStripTitle, descClip, main, out, latch));
         try {
             latch.await(timeoutMs + 6000, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
@@ -82,8 +87,9 @@ public final class HeadlessCapture {
         return out.get();
     }
 
-    private static void runCapture(Context appContext, String url, long timeoutMs, long minMs, Handler main,
-                                   AtomicReference<Captured> out, CountDownLatch latch) {
+    private static void runCapture(Context appContext, String url, long timeoutMs, long minMs,
+                                   String descSelector, String descStripTitle, int descClip,
+                                   Handler main, AtomicReference<Captured> out, CountDownLatch latch) {
         try {
             final WebView web = new WebView(appContext);
             WebSettings s = web.getSettings();
@@ -173,9 +179,23 @@ public final class HeadlessCapture {
                                 web.evaluateJavascript(COLLECT_JS, (String j2) -> {
                                     Captured fin = parse(j2);
                                     Captured best = fin != null && !fin.title.isEmpty() ? fin : lastCap[0];
-                                    out.set(best);
-                                    finishing[0] = true;
-                                    main.post(release);
+                                    if (descSelector == null || best == null) {
+                                        out.set(best);
+                                        finishing[0] = true;
+                                        main.post(release);
+                                        return;
+                                    }
+                                    // descFromDom：og 简介缺失时按规则选择器取描述文本
+                                    web.evaluateJavascript(descFromDomJs(descSelector, descStripTitle, descClip),
+                                            (String j3) -> {
+                                                if (best.description == null || best.description.isEmpty()) {
+                                                    String d = parsePlain(j3);
+                                                    if (!TextUtils.isEmpty(d)) best.description = d;
+                                                }
+                                                out.set(best);
+                                                finishing[0] = true;
+                                                main.post(release);
+                                            });
                                 });
                             }, SWEEP_WAIT_MS);
                             return;
@@ -223,6 +243,39 @@ public final class HeadlessCapture {
                     + "return JSON.stringify({url:location.href,title:og||document.title||'',"
                     + "ready:document.readyState==='complete',description:d,coverUrl:c,firstImage:firstImg,fav:fav});"
                     + "})()";
+
+    /** descFromDom 提取脚本：selector 取文本最长的可见节点，stripTitle 剥离与标题重复的前缀
+     *  （剥离点延伸到下一个标点/换行，≤12 字符，正好从“第二行/下一句”开始），clip 截断加省略号 */
+    private static String descFromDomJs(String selector, String stripTitle, int clip) {
+        String stripPart = stripTitle == null || stripTitle.isEmpty()
+                ? ""
+                : "var t0=(document.title||'').replace(new RegExp(" + JSONObject.quote(stripTitle) + "+'\\\\s*$'),'').trim();"
+                        + "if(t0&&t.indexOf(t0)===0){var cut=t0.length;"
+                        + "var m=t.slice(cut).match(/^[^，。！？；、…\\n]{0,12}[，。！？；、…\\n]/);"
+                        + "if(m)cut+=m[0].length;"
+                        + "t=t.slice(cut).trim()}";
+        return "(function(){"
+                + "var els=[].slice.call(document.querySelectorAll(" + JSONObject.quote(selector) + "))"
+                + ".filter(function(el){return el.offsetParent!==null});"
+                + "els.sort(function(a,b){return (b.innerText||'').trim().length-(a.innerText||'').trim().length});"
+                + "if(!els.length)return '';"
+                + "var t=(els[0].innerText||'').replace(/[ \\t]+\\n/g,'\\n').trim();"
+                + stripPart
+                + "if(!t)return '';"
+                + "var n=" + Math.max(clip, 40) + ";"
+                + "return t.length>n?t.slice(0,n)+'…':t;"
+                + "})()";
+    }
+
+    private static String parsePlain(String json) {
+        if (json == null || json.isEmpty() || "null".equals(json)) return "";
+        try {
+            Object v = new org.json.JSONTokener(json).nextValue();
+            return v == null ? "" : String.valueOf(v);
+        } catch (Exception e) {
+            return "";
+        }
+    }
 
     private static Captured parse(String json) {
         if (json == null || json.isEmpty() || "null".equals(json)) return null;

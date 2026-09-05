@@ -37,6 +37,10 @@ public final class Rules {
         public int renderMinMs;
         /** render.coverFromDom：og 封面缺失时取正文第一张大图当封面 */
         public boolean renderCoverFromDom;
+        /** render.descFromDom：og 简介缺失时按选择器取描述文本（stripTitle 剥离与标题重复的前缀） */
+        public String renderDescSelector;
+        public String renderDescStripTitle;
+        public int renderDescClip = 160;
         /** coverFromHtml：og 缺失时按正则从页面 HTML 抠内容图（如酷安 SSR 页的帖子首图） */
         public Pattern coverFromHtml;
         /** shareHint：站点数据拿不到真实标题时，允许用系统分享文本里的【标题】兜底 */
@@ -248,6 +252,12 @@ public final class Rules {
                 rule.render = true;
                 rule.renderMinMs = rc.optInt("minMs", 0);
                 rule.renderCoverFromDom = rc.optBoolean("coverFromDom", false);
+                JSONObject dd = rc.optJSONObject("descFromDom");
+                if (dd != null) {
+                    rule.renderDescSelector = dd.optString("selector", null);
+                    rule.renderDescStripTitle = dd.optString("stripTitle", null);
+                    rule.renderDescClip = dd.optInt("clip", 160);
+                }
             }
             rule.shareHint = r.optBoolean("shareHint", false);
             rule.titleFromPath = parseTitleFrom(r.optJSONObject("titleFromPath"), false);
@@ -351,7 +361,8 @@ public final class Rules {
         // render: 客户端渲染/强跳转站点 —— 无头 WebView 等链接完全重定向并渲染后再捕获；
         // 捕获到新地址时按最终 URL 重新匹配规则（如 p.goofish.com 短链 → www.goofish.com/item）
         if (rule != null && rule.render && context != null) {
-            HeadlessCapture.Captured cap = HeadlessCapture.capture(context, url, 24000, rule.renderMinMs);
+            HeadlessCapture.Captured cap = HeadlessCapture.capture(context, url, 24000, rule.renderMinMs,
+                    rule.renderDescSelector, rule.renderDescStripTitle, rule.renderDescClip);
             if (cap != null && !TextUtils.isEmpty(cap.url)
                     && (!TextUtils.isEmpty(cap.title) || !TextUtils.isEmpty(cap.description))) {
                 meta.url = cap.url;
