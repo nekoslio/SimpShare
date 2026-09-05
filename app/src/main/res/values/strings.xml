@@ -19,4 +19,8 @@
     <string name="rules_imported">已导入规则：%1$s</string>
     <string name="rules_reset_done">已恢复内置规则</string>
     <string name="rules_import_failed">导入失败：%1$s</string>
+    <string name="web_login_title">网页登录</string>
+    <string name="login_hint">闲鱼 / 淘宝 / 京东 / 拼多多商品页需要登录才能看到完整信息。在这里登录网页版（Cookie 只保存在本应用），之后分享这些链接即可生成带商品图和描述的完整卡片。</string>
+    <string name="login_done">完成</string>
+    <string name="login_saved">登录状态已保存</string>
 </resources>

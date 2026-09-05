@@ -13,6 +13,7 @@ import android.text.TextUtils;
 
 import androidx.core.graphics.ColorUtils;
 
+import com.nekoslio.simpshare.HeadlessCapture;
 import com.nekoslio.simpshare.R;
 import com.nekoslio.simpshare.net.Http;
 import com.nekoslio.simpshare.rules.Rules;

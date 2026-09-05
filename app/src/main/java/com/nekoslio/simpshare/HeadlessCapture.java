@@ -42,8 +42,9 @@ public final class HeadlessCapture {
         public List<String> faviconCandidates;
     }
 
-    /** 桌面 UA：与验证行为一致（部分站点按 UA 区分移动/桌面页） */
-    private static final String UA =
+    /** 桌面 UA：与验证行为一致（部分站点按 UA 区分移动/桌面页）；LoginWebViewActivity 用同一 UA，
+     *  保证应用内登录的 Cookie 对应无头捕获渲染的同一套页面 */
+    public static final String UA =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
                     + "Chrome/136.0.0.0 Safari/537.36";
 
@@ -77,7 +78,7 @@ public final class HeadlessCapture {
         final AtomicReference<Captured> out = new AtomicReference<>();
         final CountDownLatch latch = new CountDownLatch(1);
         Handler main = new Handler(Looper.getMainLooper());
-        main.post(() -> runCapture(context.getApplicationContext(), url, timeoutMs, Math.max(minMs, 0),
+        main.post(() -> runCapture(context, url, timeoutMs, Math.max(minMs, 0),
                 descSelector, descStripTitle, descClip, main, out, latch));
         try {
             latch.await(timeoutMs + 6000, TimeUnit.MILLISECONDS);
@@ -87,11 +88,17 @@ public final class HeadlessCapture {
         return out.get();
     }
 
+    /** 诊断标记（临时）：供 Rules.extract 记录规则命中情况 */
+
     private static void runCapture(Context appContext, String url, long timeoutMs, long minMs,
                                    String descSelector, String descStripTitle, int descClip,
                                    Handler main, AtomicReference<Captured> out, CountDownLatch latch) {
         try {
             final WebView web = new WebView(appContext);
+            // 未挂到窗口的 WebView 渲染进程不启动（evaluateJavascript 恒返回 null）：
+            // 有 Activity 时挂到其视图树、全尺寸但平移到屏幕外，保证内核正常加载渲染
+            final android.app.Activity act = appContext instanceof android.app.Activity
+                    ? (android.app.Activity) appContext : null;
             WebSettings s = web.getSettings();
             s.setJavaScriptEnabled(true);
             s.setDomStorageEnabled(true);
@@ -136,6 +143,9 @@ public final class HeadlessCapture {
                 try {
                     web.stopLoading();
                     web.loadUrl("about:blank");
+                    if (act != null && web.getParent() instanceof android.view.ViewGroup) {
+                        ((android.view.ViewGroup) web.getParent()).removeView(web);
+                    }
                     web.removeAllViews();
                     web.destroy();
                 } catch (Throwable t) {
@@ -143,6 +153,14 @@ public final class HeadlessCapture {
                 }
                 latch.countDown();
             };
+
+            // 挂到 Activity 视图树（渲染进程才会启动），平移到屏幕外保持不可见
+            if (act != null) {
+                act.addContentView(web, new android.view.ViewGroup.LayoutParams(
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT));
+                web.setTranslationY(web.getResources().getDisplayMetrics().heightPixels * 4f);
+            }
 
             final Runnable[] poll = new Runnable[1];
             poll[0] = new Runnable() {
@@ -160,7 +178,9 @@ public final class HeadlessCapture {
                         if (finishing[0]) return;
                         Captured cur = parse(json);
                         long now = SystemClock.uptimeMillis();
-                        if (cur != null) lastCap[0] = cur;
+                        if (cur != null) {
+                            lastCap[0] = cur;
+                        }
                         String snap = cur == null ? ""
                                 : cur.url + "\u0001" + cur.title + "\u0001"
                                 + (cur.coverUrl == null ? "" : cur.coverUrl);
@@ -188,10 +208,9 @@ public final class HeadlessCapture {
                                     // descFromDom：og 简介缺失时按规则选择器取描述文本
                                     web.evaluateJavascript(descFromDomJs(descSelector, descStripTitle, descClip),
                                             (String j3) -> {
-                                                if (best.description == null || best.description.isEmpty()) {
-                                                    String d = parsePlain(j3);
-                                                    if (!TextUtils.isEmpty(d)) best.description = d;
-                                                }
+                                                // descFromDom 声明了即优先于页面自带 meta 简介（常为站点样板，后续由 transforms 清洗）
+                                                String d = parsePlain(j3);
+                                                if (!TextUtils.isEmpty(d)) best.description = d;
                                                 out.set(best);
                                                 finishing[0] = true;
                                                 main.post(release);
@@ -280,7 +299,17 @@ public final class HeadlessCapture {
     private static Captured parse(String json) {
         if (json == null || json.isEmpty() || "null".equals(json)) return null;
         try {
-            JSONObject o = new JSONObject(json);
+            // evaluateJavascript 对字符串结果会再做一层 JSON 编码（"{\"url\":…}"），先解掉
+            org.json.JSONTokener tk = new org.json.JSONTokener(json);
+            Object v = tk.nextValue();
+            JSONObject o;
+            if (v instanceof JSONObject) {
+                o = (JSONObject) v;
+            } else if (v instanceof String) {
+                o = new JSONObject((String) v);
+            } else {
+                return null;
+            }
             Captured c = new Captured();
             c.url = o.optString("url", "");
             c.title = o.optString("title", "").trim();

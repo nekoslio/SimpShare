@@ -36,6 +36,12 @@
             </intent-filter>
         </activity>
 
+        <!-- 应用内网页登录：登录门禁站点的 Cookie 留在应用 WebView，无头捕获即为登录态 -->
+        <activity
+            android:name=".LoginWebViewActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

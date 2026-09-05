@@ -37,8 +37,66 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         LinearLayout root = FlowView.instructionsColumn(this);
         root.addView(rulesCard(), root.getChildCount() - 1, FlowView.margin(0, FlowView.dp(this, 20), 0, 0));
+        root.addView(loginCard(), root.getChildCount() - 1, FlowView.margin(0, FlowView.dp(this, 20), 0, 0));
         setContentView(FlowView.wrapInScroll(root));
         loadPersistedRules();
+    }
+
+    /* ---------- 网页登录卡片 ---------- */
+
+    private View loginCard() {
+        MaterialCardView card = new MaterialCardView(this);
+        card.setRadius(FlowView.dp(this, 24));
+        card.setCardElevation(0);
+        card.setCardBackgroundColor(FlowView.attrColor(this,
+                com.google.android.material.R.attr.colorSurfaceContainerLow));
+
+        LinearLayout inner = FlowView.column(this);
+        int pad = FlowView.dp(this, 20);
+        inner.setPadding(pad, pad, pad, pad);
+        card.addView(inner);
+
+        TextView head = new TextView(this);
+        head.setText(R.string.web_login_title);
+        head.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 17);
+        head.setTypeface(android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT,
+                android.graphics.Typeface.BOLD));
+        head.setTextColor(FlowView.attrColor(this,
+                com.google.android.material.R.attr.colorOnSurface));
+        inner.addView(head, FlowView.margin(0, 0, 0, FlowView.dp(this, 8)));
+
+        TextView hint = new TextView(this);
+        hint.setText(R.string.login_hint);
+        hint.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 13);
+        hint.setTextColor(FlowView.attrColor(this,
+                com.google.android.material.R.attr.colorOnSurfaceVariant));
+        inner.addView(hint, FlowView.margin(0, 0, 0, FlowView.dp(this, 12)));
+
+        LinearLayout row = FlowView.column(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        String[] labels = {"闲鱼", "淘宝", "京东", "拼多多"};
+        String[] urls = {
+                "https://www.goofish.com/",
+                "https://www.taobao.com/",
+                "https://www.jd.com/",
+                "https://mobile.yangkeduo.com/"
+        };
+        for (int i = 0; i < labels.length; i++) {
+            final String url = urls[i];
+            MaterialButton chip = new MaterialButton(this, null,
+                    com.google.android.material.R.attr.materialButtonOutlinedStyle);
+            chip.setText(labels[i]);
+            chip.setMinimumWidth(0);
+            chip.setPadding(FlowView.dp(this, 8), 0, FlowView.dp(this, 8), 0);
+            chip.setOnClickListener(v -> startActivity(
+                    new Intent(this, LoginWebViewActivity.class).setData(Uri.parse(url))));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+            if (i > 0) lp.setMargins(FlowView.dp(this, 8), 0, 0, 0);
+            row.addView(chip, lp);
+        }
+        inner.addView(row);
+        return card;
     }
 
     /* ---------- 规则订阅卡片 ---------- */
