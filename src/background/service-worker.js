@@ -194,7 +194,7 @@ function genericMetaFromHtml(html, baseUrl) {
  * 且短链的重定向链含 JS 跳转：后台开一个非激活标签页交给真实浏览器加载，等 HTTP 302、
  * JS 跳转与 SPA 渲染全部完成后，由页面内内容脚本在标题/og 稳定后回报元信息，随即关闭标签页。
  */
-async function captureViaTab(url, timeoutMs, minMs) {
+async function captureViaTab(url, timeoutMs, minMs, renderCfg) {
   let tabId = null;
   try {
     const tab = await chrome.tabs.create({ active: false, url });
@@ -217,7 +217,7 @@ async function captureViaTab(url, timeoutMs, minMs) {
       chrome.tabs.onRemoved.addListener(onRemoved);
       const ask = (left) => {
         if (settled) return;
-        chrome.tabs.sendMessage(tabId, { type: 'SIMPSHARE_CAPTURE', timeout: timeoutMs, minMs: minMs || 0 })
+        chrome.tabs.sendMessage(tabId, { type: 'SIMPSHARE_CAPTURE', timeout: timeoutMs, minMs: minMs || 0, render: renderCfg || null })
           .then((r) => { if (r && r.ok) finish(r); else if (left > 0) setTimeout(() => ask(left - 1), 400); else finish(r || { ok: false, error: 'capture failed' }); })
           .catch(() => { if (left > 0) setTimeout(() => ask(left - 1), 400); else finish({ ok: false, error: 'content script unavailable' }); });
       };
@@ -241,17 +241,17 @@ async function extractUrl(url) {
   let finalUrl = url;
 
   // 0) 规则声明 render：无头标签页等链接完全重定向并渲染后再捕获（失败退回普通抓取链路）
-  //    render 可为 true 或 { minMs, coverFromDom }：minMs 为最短等待（兜底慢验证跳转），
-  //    coverFromDom 在 og 封面缺失时取正文第一张大图当封面
+  //    render 可为 true 或 { minMs, coverFromDom, descFromDom }：minMs 为最短等待（兜底慢验证
+  //    跳转）；coverFromDom 在 og 封面缺失时取正文第一张大图；descFromDom 按选择器取描述
+  //    文本（stripTitle 剥离与标题重复的前缀，clip 截断加省略号），内容由内容脚本采集
   if (rule && rule.render) {
     const cfg = (typeof rule.render === 'object' && rule.render) || {};
-    const cap = await captureViaTab(url, 24000, cfg.minMs || 0).catch(() => null);
+    const cap = await captureViaTab(url, 24000, cfg.minMs || 0, cfg).catch(() => null);
     if (cap && cap.ok) {
       finalUrl = cap.url || url;
       meta.title = cleanMetaText(cap.title).slice(0, 300);
       meta.description = cleanMetaText(cap.description || '').slice(0, 2000);
-      let cover = cap.coverUrl || (cfg.coverFromDom && cap.firstImage) || null;
-      meta.coverUrl = cover ? absUrl(decodeEntities(cover), finalUrl) : null;
+      meta.coverUrl = cap.coverUrl ? absUrl(decodeEntities(cap.coverUrl), finalUrl) : null;
       meta.faviconCandidates = Array.isArray(cap.faviconCandidates) ? cap.faviconCandidates.slice(0, 6) : [];
       SimpShareRules.applyTransforms(rule, meta, finalUrl);
       if (!meta.title) meta.title = finalUrl;

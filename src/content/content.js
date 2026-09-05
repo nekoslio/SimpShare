@@ -596,6 +596,10 @@
           if (m && m[0]) base.coverUrl = 'https://' + m[0].replace(/^https?:\/\//i, '').replace(/^\/\//, '');
         } catch (e) { /* 非法 pattern 忽略 */ }
       }
+      // descFromDom：og 简介缺失时按规则选择器取描述文本（如闲鱼商品描述）
+      if (rule && rule.render && typeof rule.render === 'object' && rule.render.descFromDom && !base.description) {
+        base.description = extractDescFromDom(rule.render.descFromDom) || '';
+      }
       SimpShareRules.applyTransforms(rule, base, src);
     } else {
       // 自定义链接：后台抓取 HTML / API 完成提取（含规则变换）
@@ -705,9 +709,36 @@
     return cands[0].src;
   }
 
+  /** descFromDom：按规则选择器取描述文本（取文本最长的一个节点），
+   *  stripTitle 为站点标题后缀——先去掉再把标题前缀从描述开头剥离（闲鱼标题即描述开头截断），
+   *  剥离点延伸到下一个标点/换行（≤12 字符），正好从“第二行/下一句”开始；
+   *  clip 字符数超出截断加省略号 */
+  function extractDescFromDom(cfg) {
+    if (!cfg || !cfg.selector) return null;
+    try {
+      const els = [...document.querySelectorAll(cfg.selector)]
+        .filter(el => el.offsetParent !== null)
+        .sort((a, b) => (b.innerText || '').trim().length - (a.innerText || '').trim().length);
+      if (!els.length) return null;
+      let t = (els[0].innerText || '').replace(/[ \t]+\n/g, '\n').trim();
+      if (cfg.stripTitle) {
+        const t0 = (document.title || '').replace(new RegExp(cfg.stripTitle + '\\s*$'), '').trim();
+        if (t0 && t.startsWith(t0)) {
+          let cut = t0.length;
+          const m = t.slice(cut).match(/^[^，。！？；、…\n]{0,12}[，。！？；、…\n]/);
+          if (m) cut += m[0].length;
+          t = t.slice(cut).trim();
+        }
+      }
+      if (!t) return null;
+      const n = cfg.clip || 160;
+      return t.length > n ? t.slice(0, n) + '…' : t;
+    } catch (e) { return null; }
+  }
+
   /** 隐藏标签页里等标题/og 稳定（短链 JS 跳转与 SPA 渲染完成后）回报本页元信息；
    *  minMs：规则声明的最小捕获等待（快照稳定也不早于它收尾，兜底慢验证跳转） */
-  async function capturePageMeta(timeoutMs, minMs) {
+  async function capturePageMeta(timeoutMs, minMs, renderCfg) {
     const collect = () => {
       const og = ogFromDom();
       return JSON.stringify({ url: location.href, title: og.title, description: og.description, coverUrl: og.coverUrl });
@@ -729,20 +760,20 @@
       }
     }
     const og = ogFromDom();
+    const cfg = (typeof renderCfg === 'object' && renderCfg) || {};
     return {
       ok: true,
       url: location.href,
       title: og.title || '',
-      description: og.description || '',
-      coverUrl: og.coverUrl || null,
-      firstImage: firstContentImage(),
+      description: og.description || extractDescFromDom(cfg.descFromDom) || '',
+      coverUrl: og.coverUrl || (cfg.coverFromDom ? firstContentImage() : null),
       faviconCandidates: collectFaviconCandidates()
     };
   }
 
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg && msg.type === 'SIMPSHARE_CAPTURE') {
-      capturePageMeta(msg.timeout, msg.minMs).then(sendResponse, () => sendResponse({ ok: false, error: 'capture failed' }));
+      capturePageMeta(msg.timeout, msg.minMs, msg.render).then(sendResponse, () => sendResponse({ ok: false, error: 'capture failed' }));
       return true;   // 异步响应
     }
     return false;
