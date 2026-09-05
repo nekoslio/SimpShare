@@ -19,11 +19,11 @@ GitHub 仓库页的封面用官方社交卡片，不裁切、在封面区水平�
 ## 安装
 
 从 [Releases](https://github.com/nekoslio/SimpShare/releases) 下载
-`simpshare-1.0.5.zip` 并解压，打开 `chrome://extensions`（Edge 是
+`simpshare-1.0.6.zip` 并解压，打开 `chrome://extensions`（Edge 是
 `edge://extensions`），打开右上角**开发者模式**，点**加载已解压的扩展程序**，
 选中解压出的文件夹，最后固定到工具栏。
 
-`simpshare-1.0.5.crx` 是带签名的打包产物，供企业策略部署使用。新版 Chrome
+`simpshare-1.0.6.crx` 是带签名的打包产物，供企业策略部署使用。新版 Chrome
 不允许直接拖入安装非商店扩展，拖入会报 `CRX_REQUIRED_PROOF_MISSING`，
 这是浏览器限制，不是包坏了。
 

@@ -596,9 +596,9 @@
           if (m && m[0]) base.coverUrl = 'https://' + m[0].replace(/^https?:\/\//i, '').replace(/^\/\//, '');
         } catch (e) { /* 非法 pattern 忽略 */ }
       }
-      // descFromDom：og 简介缺失时按规则选择器取描述文本（如闲鱼商品描述）
-      if (rule && rule.render && typeof rule.render === 'object' && rule.render.descFromDom && !base.description) {
-        base.description = extractDescFromDom(rule.render.descFromDom) || '';
+      // descFromDom：规则声明了即优先于页面自带 meta 简介（如闲鱼商品描述）
+      if (rule && rule.render && typeof rule.render === 'object' && rule.render.descFromDom) {
+        base.description = extractDescFromDom(rule.render.descFromDom) || base.description;
       }
       SimpShareRules.applyTransforms(rule, base, src);
     } else {
@@ -765,7 +765,8 @@
       ok: true,
       url: location.href,
       title: og.title || '',
-      description: og.description || extractDescFromDom(cfg.descFromDom) || '',
+      // descFromDom 声明了即优先于页面自带 meta 简介（常为站点样板，后续由 transforms 清洗）
+      description: extractDescFromDom(cfg.descFromDom) || og.description || '',
       coverUrl: og.coverUrl || (cfg.coverFromDom ? firstContentImage() : null),
       faviconCandidates: collectFaviconCandidates()
     };
