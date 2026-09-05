@@ -51,9 +51,23 @@ public class ShareActivity extends AppCompatActivity {
             return;
         }
         final String raw = text;
+        // 分享文本兜底信息：酷安等 App 分享的文本自带【标题】与“分享xxx的图文”前缀，
+        // 站点数据拿不到真实标题时用它兜底
+        final String titleHint;
+        final String descHint;
+        int open = text.indexOf('【');
+        int close = open >= 0 ? text.indexOf('】', open) : -1;
+        if (open >= 0 && close > open) {
+            titleHint = text.substring(open + 1, close).trim();
+            String prefix = text.substring(0, open).trim();
+            descHint = prefix.replaceAll("[：:]$", "");
+        } else {
+            titleHint = null;
+            descHint = null;
+        }
         new Thread(() -> {
             try {
-                Bitmap card = CardRenderer.render(ShareActivity.this, url);
+                Bitmap card = CardRenderer.render(ShareActivity.this, url, titleHint, descHint);
                 File out = savePng(card);
                 Uri uri = FileProvider.getUriForFile(
                         ShareActivity.this, getPackageName() + ".fileprovider", out);

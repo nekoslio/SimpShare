@@ -1,9 +1,9 @@
 {
   "name": "SimpShare 站点规则订阅",
   "author": "SimpShare",
-  "version": 5,
-  "updatedAt": "2026-09-04",
-  "description": "GKD 风格的声明式站点规则：与应用主体分离，可独立更新。匹配(match/matchAny)决定规则命中；extract 决定标题/简介/封面的提取（og 为所有命中规则的兜底）；transforms 做字段变换；card 传入卡片渲染器。",
+  "version": 6,
+  "updatedAt": "2026-09-05",
+  "description": "GKD 风格的声明式站点规则：与应用主体分离，可独立更新。匹配(match/matchAny)决定规则命中；extract 决定标题/简介/封面的提取（og 为所有命中规则的兜底）；transforms 做字段变换；card 传入卡片渲染器。render: true 表示站点为客户端渲染/强跳转页面，两端改用无头 WebView 加载、等链接完全重定向并渲染后再从 DOM 捕获元信息。",
   "behavior": {
     "ogForUnmatchedSites": true,
     "unmatchedCoverMeta": ["og:image", "og:image:secure_url", "twitter:image", "twitter:image:src", "itemprop:image"]
@@ -111,6 +111,7 @@
       },
       "card": { "containCover": true, "hideDesc": true },
       "extract": { "og": true },
+      "coverFallback": { "pattern": "^/([^/]+)/([^/]+)", "template": "https://opengraph.githubassets.com/1/{1}/{2}" },
       "titleFromPath": { "pattern": "^/([^/]+)/([^/]+)", "template": "{1}/{2}" },
       "transforms": [{ "field": "description", "stripRegex": "\\s*Contribute to .*? on GitHub\\.?\\s*$", "flags": "i" }]
     },
@@ -135,10 +136,63 @@
       }
     },
     {
-      "id": "bilibili-other",
-      "label": "B站专栏/直播/图文",
+      "id": "bilibili-read",
+      "label": "B站专栏",
+      "note": "专栏页是纯客户端渲染的壳（无 og 无状态），走开放 API x/article/view；id 从 /read/cv{id} 或 /read/mobile?id=cv{id} 路径捕获",
       "matchAny": [
-        { "hosts": ["bilibili.com"], "path": "/(read|opus|festival)/" },
+        { "hosts": ["bilibili.com"], "path": "/read/" }
+      ],
+      "extract": {
+        "og": true,
+        "api": {
+          "idFrom": { "type": "path", "pattern": "/read/(?:cv|mobile\\?id=cv)?(\\d+)" },
+          "branches": [
+            {
+              "url": "https://api.bilibili.com/x/article/view?id={id}",
+              "requirePath": "data.title",
+              "fields": {
+                "title": "{data.title}",
+                "cover": "{data.banner_url|fallback data.image_urls.0}",
+                "descLines": ["UP主：{data.author.name}", "{data.summary|clip 160}"]
+              }
+            }
+          ]
+        }
+      },
+      "transforms": [{ "field": "cover", "forceHttps": true }]
+    },
+    {
+      "id": "bilibili-opus",
+      "label": "B站动态图文",
+      "note": "opus 页内嵌 __INITIAL_STATE__.detail（SSR）；正文取 word 文本节点，封面取首个图片节点；标题去“ - 哔哩哔哩”后缀",
+      "matchAny": [
+        { "hosts": ["bilibili.com"], "path": "/opus/" }
+      ],
+      "extract": {
+        "og": true,
+        "state": {
+          "source": "__INITIAL_STATE__",
+          "requirePath": "detail.basic.title",
+          "fields": {
+            "title": "{detail.basic.title}",
+            "cover": "{detail.modules[*].module_content.paragraphs[*].text.nodes[*].pic.url|first}",
+            "descLines": [
+              "UP主：{detail.modules[*].module_author.name|join ' / '}",
+              "{detail.modules[*].module_content.paragraphs[*].text.nodes[*].word.words|join ''|clip 160}"
+            ]
+          }
+        }
+      },
+      "transforms": [
+        { "field": "title", "stripRegex": "\\s*-\\s*哔哩哔哩\\s*$" },
+        { "field": "cover", "forceHttps": true }
+      ]
+    },
+    {
+      "id": "bilibili-other",
+      "label": "B站直播/活动页",
+      "matchAny": [
+        { "hosts": ["bilibili.com"], "path": "/festival/" },
         { "hosts": ["live.bilibili.com"] }
       ],
       "extract": { "og": true }
@@ -310,6 +364,100 @@
       "label": "Steam 商店页",
       "match": { "hosts": ["steampowered.com"], "path": "/app/" },
       "extract": { "og": true }
+    },
+    {
+      "id": "miui-community",
+      "label": "小米社区帖子",
+      "note": "SPA 无 SSR 数据；render: true 走无头 WebView，等页面渲染完成取 document.title（即帖子标题）；coverFromDom 抓不到 og 封面时取正文第一张大图",
+      "match": { "hosts": ["vip.miui.com"], "path": "/page/info/mio/" },
+      "render": { "minMs": 2500, "coverFromDom": true },
+      "extract": { "og": true }
+    },
+    {
+      "id": "wikipedia",
+      "label": "维基百科",
+      "note": "zh 系页面 og 无简介；走 REST summary API（{host} 取当前子域）拿干净的标题、首段简介与配图，失败退回 og",
+      "matchAny": [
+        { "hosts": ["wikipedia.org"], "path": "/wiki/" },
+        { "hosts": ["wikimedia.org"], "path": "/wiki/" }
+      ],
+      "extract": {
+        "og": true,
+        "api": {
+          "idFrom": { "type": "path", "pattern": "/wiki/(.+)" },
+          "branches": [
+            {
+              "url": "https://{host}/api/rest_v1/page/summary/{id}",
+              "requirePath": "extract",
+              "fields": {
+                "title": "{title}",
+                "cover": "{originalimage.source|fallback thumbnail.source}",
+                "descLines": ["{extract|clip 160}"]
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "coolapk",
+      "label": "酷安动态",
+      "note": "网页端对无追踪参数的链接只渲染扫码落地页；从酷安 App 分享出的链接带 ?s=shareToken，服务端会渲染完整页面（真实标题 + 帖子首图）。coverFromHtml 从 HTML 里抠帖子首图当封面，裸链接降级二维码模式；shareHint 表示 Android 端可用分享文本里的【标题】兜底",
+      "match": { "hosts": ["coolapk.com"], "path": "/feed/" },
+      "shareHint": true,
+      "extract": { "og": true },
+      "coverFromHtml": { "pattern": "image\\.coolapk\\.com/feed/[^\"]+?\\.(?:jpg|jpeg|png|webp)" },
+      "transforms": [{ "field": "cover", "forceHttps": true }]
+    },
+    {
+      "id": "goofish",
+      "label": "闲鱼商品",
+      "note": "p.goofish.com 短链经 HTTP 302 落到 h5 端再 JS 跳转 www 端；render: true 让无头 WebView 等待整条重定向链稳定后再捕获。商品详情接口有登录/风控门禁：登录态下标题即商品名、coverFromDom 取商品首图，未登录降级二维码模式；shareHint 表示 Android 端可用分享文本里的【标题】兜底",
+      "matchAny": [
+        { "hosts": ["goofish.com"], "path": "/item" },
+        { "hosts": ["goofish.com"], "path": "/p/" }
+      ],
+      "render": { "coverFromDom": true },
+      "shareHint": true,
+      "extract": { "og": true },
+      "transforms": [
+        { "field": "title", "stripRegex": "_闲鱼\\s*$" },
+        { "field": "description", "stripRegex": "^闲鱼，中国领先的闲置二手交易平台[\\s\\S]*$" }
+      ]
+    },
+    {
+      "id": "baidu-pan",
+      "label": "百度网盘分享",
+      "note": "带 pwd 的链接在页面内自动验证后跳转文件列表页，标题即“{文件名}_免费高速下载|…”；render.minMs 确保无头捕获等到验证跳转完成而不是停在提取码页",
+      "match": { "hosts": ["pan.baidu.com"], "path": "/s/" },
+      "render": { "minMs": 9000 },
+      "extract": { "og": true },
+      "transforms": [
+        { "field": "title", "stripRegex": "_免费高速下载[\\s\\S]*$" },
+        { "field": "description", "stripRegex": "^百度网盘为您提供[\\s\\S]*$" }
+      ]
+    },
+    {
+      "id": "duckduckgo",
+      "label": "DuckDuckGo 搜索",
+      "note": "搜索结果页无 og；标题从 q 参数组装",
+      "match": { "hosts": ["duckduckgo.com"], "query": { "q": true } },
+      "extract": { "og": true },
+      "titleFromQuery": { "name": "q", "template": "{q} - DuckDuckGo 搜索" }
+    },
+    {
+      "id": "123pan",
+      "label": "123云盘分享",
+      "note": "标题服务端直出“{文件名} - 123云盘…”；render 等列表渲染完成再捕获，站点样板简介与标题后缀由 transforms 清除",
+      "matchAny": [
+        { "hosts": ["123pan.cn", "123pan.com"], "path": "/(s|123pan)/" }
+      ],
+      "render": { "minMs": 2500 },
+      "extract": { "og": true },
+      "transforms": [
+        { "field": "title", "stripRegex": "\\s*-\\s*123云盘[\\s\\S]*$" },
+        { "field": "description", "stripRegex": "^123云盘为您提供[\\s\\S]*$" }
+      ]
     }
   ]
 }

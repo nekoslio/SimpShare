@@ -1,9 +1,11 @@
 package com.nekoslio.simpshare.rules;
 
+import android.content.Context;
 import android.content.res.AssetManager;
 import android.text.TextUtils;
 
 import com.nekoslio.simpshare.net.Http;
+import com.nekoslio.simpshare.HeadlessCapture;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -29,14 +31,50 @@ public final class Rules {
         public List<Match> alts = new ArrayList<>();
         public boolean containCover;
         public boolean hideDesc;
+        /** render: true / {minMs} → 客户端渲染/强跳转站点，先经无头 WebView 等重定向与渲染完成再捕获 */
+        public boolean render;
+        /** render.minMs：快照稳定后仍至少等待的毫秒数（兜底慢验证跳转，如百度网盘提取码） */
+        public int renderMinMs;
+        /** render.coverFromDom：og 封面缺失时取正文第一张大图当封面 */
+        public boolean renderCoverFromDom;
+        /** coverFromHtml：og 缺失时按正则从页面 HTML 抠内容图（如酷安 SSR 页的帖子首图） */
+        public Pattern coverFromHtml;
+        /** shareHint：站点数据拿不到真实标题时，允许用系统分享文本里的【标题】兜底 */
+        public boolean shareHint;
+        public TitleFrom titleFromPath;
+        public TitleFrom titleFromQuery;
+        public List<Transform> transforms;
+        public CoverFallback coverFallback;
     }
 
     public static class Match {
         public String[] hosts;
         public Pattern path;
         public Pattern exclude;
-        public boolean requireQueryVid;
+        /** match.query：要求存在的 query 参数名（如 youku 的 vid、DuckDuckGo 的 q） */
+        public String[] requireQueryParams;
         public boolean pathAndHash;
+    }
+
+    /** titleFromPath / titleFromQuery：从 URL 捕获组或 query 参数组装标题 */
+    public static class TitleFrom {
+        public String name;      // titleFromQuery 的参数名
+        public Pattern pattern;  // titleFromPath 的路径正则
+        public String template;
+    }
+
+    /** transforms：字段变换（stripRegex / forceHttps / appendQuery） */
+    public static class Transform {
+        public String field;
+        public Pattern strip;
+        public boolean forceHttps;
+        public String appendQuery;
+    }
+
+    /** coverFallback：og 封面缺失/失败时的备选直链（按 URL path 捕获组组装） */
+    public static class CoverFallback {
+        public Pattern pattern;
+        public String template;
     }
 
     /** 提取结果 */
@@ -190,11 +228,43 @@ public final class Rules {
                     if (path != null) mm.path = Pattern.compile(path, Pattern.CASE_INSENSITIVE);
                     String excl = m.optString("pathExclude", null);
                     if (excl != null) mm.exclude = Pattern.compile(excl, Pattern.CASE_INSENSITIVE);
-                    mm.requireQueryVid = m.optJSONObject("query") != null
-                            && m.optJSONObject("query").has("vid");
+                    JSONObject query = m.optJSONObject("query");
+                    if (query != null) {
+                        JSONArray qn = query.names();
+                        if (qn != null && qn.length() > 0) {
+                            mm.requireQueryParams = new String[qn.length()];
+                            for (int k = 0; k < qn.length(); k++) mm.requireQueryParams[k] = qn.optString(k);
+                        }
+                    }
                     mm.pathAndHash = "pathAndHash".equals(m.optString("pathSource"));
                     rule.alts.add(mm);
                 }
+            }
+            Object render = r.opt("render");
+            if (render instanceof Boolean) {
+                rule.render = (Boolean) render;
+            } else if (render instanceof JSONObject) {
+                JSONObject rc = (JSONObject) render;
+                rule.render = true;
+                rule.renderMinMs = rc.optInt("minMs", 0);
+                rule.renderCoverFromDom = rc.optBoolean("coverFromDom", false);
+            }
+            rule.shareHint = r.optBoolean("shareHint", false);
+            rule.titleFromPath = parseTitleFrom(r.optJSONObject("titleFromPath"), false);
+            rule.titleFromQuery = parseTitleFrom(r.optJSONObject("titleFromQuery"), true);
+            JSONObject ch = r.optJSONObject("coverFromHtml");
+            if (ch != null) {
+                String chp = ch.optString("pattern", null);
+                if (chp != null) rule.coverFromHtml = Pattern.compile(chp);
+            }
+            rule.transforms = parseTransforms(r.optJSONArray("transforms"));
+            JSONObject cf = r.optJSONObject("coverFallback");
+            if (cf != null) {
+                CoverFallback f = new CoverFallback();
+                String pat = cf.optString("pattern", null);
+                f.template = cf.optString("template", "");
+                if (pat != null) f.pattern = Pattern.compile(pat);
+                rule.coverFallback = f.pattern != null ? f : null;
             }
             p.rules.add(rule);
         }
@@ -238,7 +308,12 @@ public final class Rules {
         String p = m.pathAndHash ? u.getPath() + hashPath(u) : u.getPath();
         if (m.path != null && !m.path.matcher(p).find()) return false;
         if (m.exclude != null && m.exclude.matcher(u.getPath()).find()) return false;
-        if (m.requireQueryVid && !raw.contains("vid=")) return false;
+        if (m.requireQueryParams != null) {
+            String q = u.getQuery();
+            for (String name : m.requireQueryParams) {
+                if (q == null || !q.contains(name + "=")) return false;
+            }
+        }
         return true;
     }
 
@@ -251,6 +326,19 @@ public final class Rules {
     /* ================= 元信息提取 ================= */
 
     public static Meta extract(String url) throws Exception {
+        return extract(null, url, null, null);
+    }
+
+    public static Meta extract(Context context, String url) throws Exception {
+        return extract(context, url, null, null);
+    }
+
+    /**
+     * 完整提取流程。context 仅在规则声明 render: true 时用于无头 WebView 捕获，可为 null；
+     * titleHint / descHint 来自系统分享的原始文本（如酷安分享文本里的【标题】与“分享xxx的图文”），
+     * 在站点数据拿不到（或像酷安 landing 页那样只有通用标题）时兜底。
+     */
+    public static Meta extract(Context context, String url, String titleHint, String descHint) throws Exception {
         Rule rule = match(url);
         Meta meta = new Meta();
         meta.url = url;
@@ -260,6 +348,34 @@ public final class Rules {
             meta.hideDesc = rule.hideDesc;
         }
 
+        // render: 客户端渲染/强跳转站点 —— 无头 WebView 等链接完全重定向并渲染后再捕获；
+        // 捕获到新地址时按最终 URL 重新匹配规则（如 p.goofish.com 短链 → www.goofish.com/item）
+        if (rule != null && rule.render && context != null) {
+            HeadlessCapture.Captured cap = HeadlessCapture.capture(context, url, 24000, rule.renderMinMs);
+            if (cap != null && !TextUtils.isEmpty(cap.url)
+                    && (!TextUtils.isEmpty(cap.title) || !TextUtils.isEmpty(cap.description))) {
+                meta.url = cap.url;
+                meta.title = cleanText(cap.title);
+                meta.description = cleanText(cap.description);
+                String capturedCover = cap.coverUrl;
+                if (TextUtils.isEmpty(capturedCover) && rule.renderCoverFromDom) capturedCover = cap.firstImage;
+                if (!TextUtils.isEmpty(capturedCover)) {
+                    try { meta.coverUrl = new URL(new URL(cap.url), capturedCover).toString(); }
+                    catch (Exception e) { meta.coverUrl = null; }
+                }
+                if (cap.faviconCandidates != null && !cap.faviconCandidates.isEmpty()) {
+                    meta.faviconCandidates = cap.faviconCandidates;
+                }
+                Rule finalRule = match(cap.url);
+                if (finalRule != null && finalRule != rule) {
+                    rule = finalRule;
+                    meta.ruleId = rule.id;
+                    meta.containCover = rule.containCover;
+                    meta.hideDesc = rule.hideDesc;
+                }
+            }
+        }
+
         String html = null;
         if (rule != null && "bilibili-video".equals(rule.id)) {
             // 页面 HTML 会被 B 站 WAF 按 TLS 指纹拦截（返回 412），优先走开放 API
@@ -267,8 +383,32 @@ public final class Rules {
                 html = Http.fetchText(url, null);
                 extractBilibili(meta, html);
             }
+        } else if (rule != null && "bilibili-read".equals(rule.id)) {
+            // 专栏页是纯客户端渲染的壳（无 og 无状态），走开放 API x/article/view
+            if (meta.title.length() == 0 && meta.coverUrl == null) {
+                if (!extractBilibiliArticleApi(meta, url)) {
+                    html = Http.fetchText(url, null);
+                    extractOg(meta, html, url);
+                }
+            }
+        } else if (rule != null && "bilibili-opus".equals(rule.id)) {
+            // opus 页内嵌 __INITIAL_STATE__.detail（SSR），按声明式规则的字段路径在 Java 里取同源数据
+            if (meta.title.length() == 0 && meta.coverUrl == null) {
+                html = Http.fetchText(url, null);
+                if (!extractBilibiliOpus(meta, html)) {
+                    extractOg(meta, html, url);
+                }
+            }
         } else if (rule != null && "netease-music".equals(rule.id)) {
             extractNetease(meta, url);
+        } else if (rule != null && "wikipedia".equals(rule.id)) {
+            // zh 系页面 og 无简介；走 REST summary API 拿干净的标题、首段简介与配图，失败退回 og
+            if (meta.title.length() == 0 && meta.coverUrl == null) {
+                if (!extractWikipediaRest(meta, url)) {
+                    if (html == null) html = Http.fetchText(url, null);
+                    extractOg(meta, html, url);
+                }
+            }
         }
 
         if (meta.title.length() == 0 && meta.coverUrl == null) {
@@ -277,21 +417,23 @@ public final class Rules {
         }
         if (meta.title.length() == 0) meta.title = url;
 
-        // GitHub：标题取 owner/repo，简介去官方样板句；
-        // 封面备选直链（opengraph.githubassets.com 按 owner/repo 现生成，og 图抓取失败时重试）
-        if (rule != null && "github".equals(rule.id)) {
-            URL u = safeUrl(url);
-            if (u != null) {
-                java.util.regex.Matcher m = Pattern.compile("^/([^/]+)/([^/]+)")
-                        .matcher(u.getPath());
-                if (m.find()) {
-                    meta.title = m.group(1) + "/" + m.group(2).replaceFirst("\\.git$", "");
-                    meta.coverFallbackUrl = "https://opengraph.githubassets.com/1/"
-                            + m.group(1) + "/" + m.group(2).replaceFirst("\\.git$", "");
-                }
+        // coverFromHtml：og 缺失时按规则声明的正则从页面 HTML 抠内容图（在变换前，交由 forceHttps 归一）
+        if (rule != null && rule.coverFromHtml != null && meta.coverUrl == null && html != null) {
+            Matcher cm = rule.coverFromHtml.matcher(html);
+            if (cm.find()) {
+                meta.coverUrl = "https://" + cm.group().replaceFirst("^https?://", "").replaceFirst("^//", "");
             }
-            meta.description = meta.description
-                    .replaceAll("\\s*Contribute to .*? on GitHub\\.?\\s*$", "").trim();
+        }
+
+        // 声明式标题组装与字段变换（titleFromPath / titleFromQuery / transforms / coverFallback）
+        applyRuleTransforms(rule, meta, meta.url);
+
+        // 分享文本兜底：规则声明 shareHint（酷安 / 闲鱼）时，App 分享文本里的【标题】比
+        // landing 页通用标题（甚至比带站点后缀的 SSR 标题）更干净，直接采用
+        if (!TextUtils.isEmpty(titleHint) && rule != null && !titleHint.equals(meta.title)
+                && (meta.title.length() == 0 || meta.title.equals(url) || rule.shareHint)) {
+            meta.title = titleHint;
+            if (meta.description.length() == 0 && !TextUtils.isEmpty(descHint)) meta.description = descHint;
         }
 
         // 规则内且封面抓取条件满足 → 封面模式；未适配站点也允许 og 封面
@@ -310,6 +452,116 @@ public final class Rules {
             meta.faviconCandidates = fb;
         }
         return meta;
+    }
+
+    /* ================= 声明式标题组装与字段变换 ================= */
+
+    /** 与扩展端 applyTransforms 同构：titleFromPath / titleFromQuery / transforms / coverFallback */
+    private static void applyRuleTransforms(Rule rule, Meta meta, String url) {
+        if (rule == null) return;
+        URL u = safeUrl(url);
+
+        if (rule.titleFromPath != null && rule.titleFromPath.pattern != null && u != null) {
+            Matcher m = rule.titleFromPath.pattern.matcher(u.getPath());
+            if (m.find()) meta.title = fillGroups(rule.titleFromPath.template, m);
+        }
+        if (rule.titleFromQuery != null && u != null) {
+            String q = paramOf(url, rule.titleFromQuery.name);
+            if (!TextUtils.isEmpty(q)) {
+                meta.title = rule.titleFromQuery.template
+                        .replace("{" + rule.titleFromQuery.name + "}", decodeQuery(q))
+                        .trim();
+            }
+        }
+        if (rule.transforms != null) {
+            for (Transform t : rule.transforms) {
+                String val = fieldOf(meta, t.field);
+                if (TextUtils.isEmpty(val)) continue;
+                if (t.strip != null) val = t.strip.matcher(val).replaceFirst("").trim();
+                if (t.forceHttps) {
+                    val = val.replaceFirst("^http://", "https://").replaceFirst("^//", "https://");
+                }
+                if (!TextUtils.isEmpty(t.appendQuery) && !val.contains("?")) val = val + "?" + t.appendQuery;
+                setField(meta, t.field, val);
+            }
+        }
+        if (rule.coverFallback != null && rule.coverFallback.pattern != null && u != null) {
+            Matcher m = rule.coverFallback.pattern.matcher(u.getPath());
+            if (m.find()) meta.coverFallbackUrl = fillGroups(rule.coverFallback.template, m);
+        }
+    }
+
+    /** 模板 {1}/{2} 以正则捕获组填充 */
+    private static String fillGroups(String template, Matcher m) {
+        StringBuilder sb = new StringBuilder();
+        Matcher placeholder = Pattern.compile("\\{(\\d+)\\}").matcher(template);
+        int last = 0;
+        while (placeholder.find()) {
+            sb.append(template, last, placeholder.start());
+            int g = Integer.parseInt(placeholder.group(1));
+            sb.append(m.groupCount() >= g && m.group(g) != null ? m.group(g) : "");
+            last = placeholder.end();
+        }
+        sb.append(template.substring(last));
+        return sb.toString();
+    }
+
+    private static String fieldOf(Meta meta, String field) {
+        if ("title".equals(field)) return meta.title;
+        if ("description".equals(field)) return meta.description;
+        if ("cover".equals(field)) return meta.coverUrl;
+        return null;
+    }
+
+    private static void setField(Meta meta, String field, String val) {
+        if ("title".equals(field)) meta.title = val == null ? "" : val;
+        else if ("description".equals(field)) meta.description = val == null ? "" : val;
+        else if ("cover".equals(field)) meta.coverUrl = val;
+    }
+
+    /** query 值的 + 与 %XX 解码（DuckDuckGo 的 q 可能是编码后的中文） */
+    private static String decodeQuery(String v) {
+        try { return java.net.URLDecoder.decode(v, "UTF-8"); }
+        catch (Exception e) { return v; }
+    }
+
+    /* ================= 规则解析辅助 ================= */
+
+    private static TitleFrom parseTitleFrom(JSONObject o, boolean fromQuery) {
+        if (o == null) return null;
+        TitleFrom t = new TitleFrom();
+        t.template = o.optString("template", "");
+        if (fromQuery) {
+            t.name = o.optString("name", null);
+            if (TextUtils.isEmpty(t.name)) return null;
+        } else {
+            String p = o.optString("pattern", null);
+            if (p == null) return null;
+            t.pattern = Pattern.compile(p);
+        }
+        return t;
+    }
+
+    private static List<Transform> parseTransforms(JSONArray arr) {
+        if (arr == null || arr.length() == 0) return null;
+        List<Transform> out = new ArrayList<>();
+        for (int i = 0; i < arr.length(); i++) {
+            JSONObject o = arr.optJSONObject(i);
+            if (o == null) continue;
+            Transform t = new Transform();
+            t.field = o.optString("field", "");
+            String strip = o.optString("stripRegex", null);
+            if (strip != null) {
+                int flags = 0;
+                String f = o.optString("flags", "");
+                if (f.contains("i")) flags |= Pattern.CASE_INSENSITIVE;
+                t.strip = Pattern.compile(strip, flags);
+            }
+            t.forceHttps = o.optBoolean("forceHttps", false);
+            t.appendQuery = o.optString("appendQuery", null);
+            out.add(t);
+        }
+        return out.isEmpty() ? null : out;
     }
 
     /** og: / twitter: / itemprop / <title> 兜底提取（SW 同款正则策略） */
@@ -388,6 +640,135 @@ public final class Rules {
             return m.find() ? m.group(1) : null;
         } catch (Exception e) {
             return null;
+        }
+    }
+
+    /**
+     * B站专栏开放 API（x/article/view，与规则 extract.api 声明一致）。
+     * id 从 /read/cv{id} 或 /read/mobile?id=cv{id} 捕获；返回 false 回退页面提取。
+     */
+    private static boolean extractBilibiliArticleApi(Meta meta, String url) {
+        try {
+            URL u = new URL(url);
+            String s = (u.getPath() == null ? "" : u.getPath())
+                    + (u.getQuery() == null ? "" : "?" + u.getQuery());
+            Matcher m = Pattern.compile("/read/(?:cv|mobile\\?id=cv)?(\\d+)").matcher(s);
+            if (!m.find()) return false;
+            JSONObject root = new JSONObject(Http.fetchText(
+                    "https://api.bilibili.com/x/article/view?id=" + m.group(1),
+                    "https://www.bilibili.com/"));
+            if (root.optInt("code", -1) != 0) return false;
+            JSONObject d = root.optJSONObject("data");
+            if (d == null || TextUtils.isEmpty(d.optString("title"))) return false;
+            meta.title = d.optString("title");
+            String cover = d.optString("banner_url", "");
+            if (TextUtils.isEmpty(cover)) {
+                JSONArray imgs = d.optJSONArray("image_urls");
+                if (imgs != null && imgs.length() > 0) cover = imgs.optString(0);
+            }
+            meta.coverUrl = cover.startsWith("http://")
+                    ? cover.replaceFirst("^http://", "https://")
+                    : (cover.isEmpty() ? null : cover);
+            JSONObject author = d.optJSONObject("author");
+            String authorLine = author != null && !TextUtils.isEmpty(author.optString("name"))
+                    ? "UP主：" + author.optString("name") + "\n" : "";
+            meta.description = authorLine + clip(d.optString("summary"), 160);
+            // API 路径不再回抓 HTML（会被 WAF 拒），favicon 直接用站点默认图标
+            List<String> fb = new ArrayList<>();
+            try { fb.add(new URL(new URL(url), "/favicon.ico").toString()); } catch (Exception e) { /* ignore */ }
+            meta.faviconCandidates = fb;
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** B站动态图文：页面内嵌 __INITIAL_STATE__.detail（SSR），与扩展端 state 规则字段同源 */
+    private static boolean extractBilibiliOpus(Meta meta, String html) {
+        String json = extractAssignedObject(html, "__INITIAL_STATE__");
+        if (json == null) return false;
+        try {
+            JSONObject detail = new JSONObject(json).optJSONObject("detail");
+            JSONObject basic = detail == null ? null : detail.optJSONObject("basic");
+            String title = basic == null ? "" : basic.optString("title");
+            if (TextUtils.isEmpty(title)) return false;
+            meta.title = title;
+            StringBuilder text = new StringBuilder();
+            String author = "";
+            String cover = null;
+            JSONArray modules = detail.optJSONArray("modules");
+            for (int i = 0; modules != null && i < modules.length(); i++) {
+                JSONObject mo = modules.optJSONObject(i);
+                if (mo == null) continue;
+                JSONObject ma = mo.optJSONObject("module_author");
+                if (ma != null && TextUtils.isEmpty(author)) author = ma.optString("name");
+                JSONObject mc = mo.optJSONObject("module_content");
+                JSONArray paras = mc == null ? null : mc.optJSONArray("paragraphs");
+                for (int j = 0; paras != null && j < paras.length(); j++) {
+                    JSONObject pa = paras.optJSONObject(j);
+                    JSONObject t = pa == null ? null : pa.optJSONObject("text");
+                    JSONArray nodes = t == null ? null : t.optJSONArray("nodes");
+                    for (int k = 0; nodes != null && k < nodes.length(); k++) {
+                        JSONObject nd = nodes.optJSONObject(k);
+                        if (nd == null) continue;
+                        JSONObject word = nd.optJSONObject("word");
+                        if (word != null) text.append(word.optString("words"));
+                        JSONObject pic = nd.optJSONObject("pic");
+                        if (pic != null && cover == null && !TextUtils.isEmpty(pic.optString("url"))) {
+                            cover = pic.optString("url");
+                        }
+                    }
+                }
+            }
+            String authorLine = TextUtils.isEmpty(author) ? "" : "UP主：" + author + "\n";
+            meta.description = authorLine + clip(text.toString(), 160);
+            if (cover != null && cover.startsWith("http://")) cover = cover.replaceFirst("^http://", "https://");
+            meta.coverUrl = cover;
+            List<String> fb = new ArrayList<>();
+            try { fb.add(new URL(new URL(meta.url), "/favicon.ico").toString()); } catch (Exception e) { /* ignore */ }
+            meta.faviconCandidates = fb;
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static String clip(String s, int n) {
+        if (s == null) return "";
+        return s.length() > n ? s.substring(0, n) + "…" : s;
+    }
+
+    /**
+     * 维基百科 REST summary API（{host} 即当前子域，与规则 extract.api 声明一致）：
+     * 拿干净的标题、首段简介与配图。返回 false 回退 og。
+     */
+    private static boolean extractWikipediaRest(Meta meta, String url) {
+        try {
+            URL u = new URL(url);
+            String p = u.getPath() == null ? "" : u.getPath();
+            Matcher m = Pattern.compile("/wiki/(.+)").matcher(p);
+            if (!m.find()) return false;
+            String id = decodeQuery(m.group(1));   // pathname 为百分号编码，解码后按 UTF-8 传输
+            JSONObject d = new JSONObject(Http.fetchText(
+                    "https://" + u.getHost() + "/api/rest_v1/page/summary/" + java.net.URLEncoder.encode(id, "UTF-8"),
+                    url));
+            if (TextUtils.isEmpty(d.optString("extract"))) return false;
+            String title = cleanText(d.optString("title"));
+            if (TextUtils.isEmpty(title)) return false;
+            meta.title = title;
+            meta.description = clip(d.optString("extract"), 160);
+            String cover = null;
+            JSONObject orig = d.optJSONObject("originalimage");
+            JSONObject thumb = d.optJSONObject("thumbnail");
+            if (orig != null && !TextUtils.isEmpty(orig.optString("source"))) cover = orig.optString("source");
+            else if (thumb != null && !TextUtils.isEmpty(thumb.optString("source"))) cover = thumb.optString("source");
+            meta.coverUrl = cover;
+            List<String> fb = new ArrayList<>();
+            try { fb.add(new URL(new URL(url), "/favicon.ico").toString()); } catch (Exception e) { /* ignore */ }
+            meta.faviconCandidates = fb;
+            return true;
+        } catch (Exception e) {
+            return false;
         }
     }
 

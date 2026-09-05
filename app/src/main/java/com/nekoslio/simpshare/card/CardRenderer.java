@@ -45,10 +45,16 @@ public final class CardRenderer {
 
     /** 主入口：抓取元信息与图片，渲染卡片位图 */
     public static Bitmap render(Context context, String url) throws Exception {
+        return render(context, url, null, null);
+    }
+
+    /** 完整入口：titleHint / descHint 为系统分享原始文本里的兜底标题与说明（可为 null） */
+    public static Bitmap render(Context context, String url, String titleHint, String descHint) throws Exception {
         Rules.load(context.getAssets());
         // 已被改写成展示域名的链接（如 bilibilibb.com）先还原回源站再匹配与抓取
         String src = Rules.unRedirect(url);
-        Rules.Meta meta = Rules.extract(src);
+        // context 供 render: true 规则的无头 WebView 捕获使用（等链接完全重定向后再提取）
+        Rules.Meta meta = Rules.extract(context, src, titleHint, descHint);
         boolean night = (context.getResources().getConfiguration().uiMode
                 & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
 

@@ -19,7 +19,23 @@ SimpShare 的 Android 端：**不打开应用也能用**——在任意应用里
 失败时（无网络 / 页面无法访问）会在错误页给出具体原因，不影响原应用。
 
 B 站视频的标题、UP主、简介和封面走 B 站开放 API 提取（页面 HTML 会被 B 站 WAF
-按客户端指纹拦截，API 不会）；其他站点抓取页面 `<meta>` 元信息兜底。
+按客户端指纹拦截，API 不会）；B 站专栏同样走开放 API（`x/article/view`），
+动态图文（opus）读页面内嵌 `__INITIAL_STATE__`；其他站点抓取页面 `<meta>` 元信息兜底。
+
+## 无头 WebView 捕获（render 规则）
+
+小米社区、闲鱼（`p.goofish.com` 短链）、百度网盘带提取码链接这类页面，
+用 HttpURLConnection 拿不到数据，短链的重定向链还含 JS 跳转。规则里声明
+`render: true`（或 `{ "minMs": 9000 }`）后，分享时会起一个不挂界面的无头 WebView，
+交给真实内核加载：HTTP 302、JS 跳转、SPA 渲染全部发生完（地址/标题/og 快照
+连续稳定，且不早于 `minMs`）后，再从渲染好的 DOM 里取标题、简介、封面和 favicon，
+随后销毁 WebView。百度网盘的 `minMs` 就是为"自动验证提取码 → 跳文件列表页 →
+标题写入文件名"这段慢流程留的余量。
+
+闲鱼商品详情接口有登录门禁：App 内分享出的文本自带【标题】，`shareHint` 规则用它兜底标题；浏览器侧登录态下无头捕获直接拿到商品名与商品首图。未登录时自动降级二维码模式。
+酷安网页端只对带 `?s=shareToken` 的链接（酷安 App 分享出的链接自带）渲染完整页面，
+规则用 `coverFromHtml` 从页面 HTML 抠帖子首图当封面；`?s=` 过期或裸链接时，再用
+分享文本里的【标题】与“分享xxx的图文”前缀兜底标题/简介，仍不行才降级二维码模式。
 
 ## 分享链接的改写（b23）
 
@@ -41,9 +57,11 @@ B 站视频的标题、UP主、简介和封面走 B 站开放 API 提取（页�
 
 自己维护规则时只需要关心 `siteRules`（站点怎么匹配、提取什么）和 `redirect.rules`
 （展示链接怎么改写），字段说明见扩展端 README 的"规则订阅文件"一节。安卓端目前
-用到的是匹配条件、`card` 标记、`redirect.rules` 和 og 兜底；`extract.state` /
-`extract.api` 这类依赖浏览器环境的提取方式由端内实现代替（B 站走 API，网易云走
-同源 Web API），导入的规则不会因此失效。
+用到的是匹配条件（含 `query` 参数）、`card` 标记、`render` 无头捕获、
+`titleFromPath` / `titleFromQuery` / `transforms` / `coverFallback` 和 og 兜底；
+`extract.state` / `extract.api` 这类依赖浏览器环境的提取方式由端内实现代替
+（B 站视频/专栏走 API，opus 读内嵌状态，网易云走同源 Web API），导入的规则不会
+因此失效。
 
 ## 构建（无需 Android Studio）
 
@@ -79,6 +97,7 @@ app/src/main/java/.../
   MainActivity.java               桌面入口：操作流程 + 规则导入 / 恢复
   ShareActivity.java              分享入口：取链接 → 生成卡片 → 唤起系统分享
   FlowView.java                   程序化构建的 M3 流程 / 加载 / 错误视图（无布局 XML）
+  HeadlessCapture.java            无头 WebView 捕获（render 规则：等重定向与渲染完成后取元信息）
   card/CardRenderer.java          2100×900 卡片渲染器（与扩展端 render.js 同版式）
   card/Qr.java                    zxing 二维码（纠错级别 M，白底黑码）
   rules/Rules.java                规则解析与匹配、链接改写、导入替换、B站 API / 网易云 / og 提取
