@@ -43,10 +43,18 @@ function absUrl(u, base) {
 }
 
 async function fetchText(url, maxLen) {
-  const r = await fetch(url, { credentials: 'omit', redirect: 'follow' });
+  const r = await fetchWithTimeout(url, { credentials: 'omit', redirect: 'follow' }, 20000);
   if (!r.ok) throw new Error('HTTP ' + r.status);
   const t = await r.text();
   return { html: t.slice(0, maxLen || 3000000), finalUrl: r.url || url };
+}
+
+/** 带超时的 fetch：代理/CDN 偶发挂起时不让整条提取链路卡死 */
+function fetchWithTimeout(url, opts, ms) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms || 15000);
+  return fetch(url, Object.assign({}, opts, { signal: ctrl.signal }))
+    .finally(() => clearTimeout(timer));
 }
 
 function blobToDataURL(blob) {
@@ -65,7 +73,7 @@ async function fetchImage(url, referer) {
     // 带上来源页面作为 Referer，绕过豆瓣等站点的无 Referer 防盗链
     const opts = { credentials: 'omit', redirect: 'follow' };
     if (referer && /^https?:\/\//i.test(referer)) opts.referrer = referer;
-    const r = await fetch(url, opts);
+    const r = await fetchWithTimeout(url, opts, 20000);
     if (!r.ok) return { ok: false, error: 'HTTP ' + r.status };
     const ct = (r.headers.get('content-type') || '').toLowerCase();
     if (ct && !ct.startsWith('image/') && !ct.includes('octet-stream')) {
@@ -181,7 +189,49 @@ function genericMetaFromHtml(html, baseUrl) {
   };
 }
 
+/* ---------------- 无头标签页捕获（render: true 的站点） ----------------
+ * 客户端渲染 / 强跳转页面（小米社区、闲鱼短链、百度网盘带提取码等）fetch HTML 拿不到数据，
+ * 且短链的重定向链含 JS 跳转：后台开一个非激活标签页交给真实浏览器加载，等 HTTP 302、
+ * JS 跳转与 SPA 渲染全部完成后，由页面内内容脚本在标题/og 稳定后回报元信息，随即关闭标签页。
+ */
+async function captureViaTab(url, timeoutMs, minMs) {
+  let tabId = null;
+  try {
+    const tab = await chrome.tabs.create({ active: false, url });
+    tabId = tab.id;
+  } catch (e) {
+    return { ok: false, error: 'tab create failed' };
+  }
+  try {
+    return await new Promise((resolve) => {
+      let settled = false;
+      const finish = (v) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        chrome.tabs.onRemoved.removeListener(onRemoved);
+        resolve(v);
+      };
+      const onRemoved = (id) => { if (id === tabId) finish({ ok: false, error: 'tab closed' }); };
+      const timer = setTimeout(() => finish({ ok: false, error: 'capture timeout' }), timeoutMs);
+      chrome.tabs.onRemoved.addListener(onRemoved);
+      const ask = (left) => {
+        if (settled) return;
+        chrome.tabs.sendMessage(tabId, { type: 'SIMPSHARE_CAPTURE', timeout: timeoutMs, minMs: minMs || 0 })
+          .then((r) => { if (r && r.ok) finish(r); else if (left > 0) setTimeout(() => ask(left - 1), 400); else finish(r || { ok: false, error: 'capture failed' }); })
+          .catch(() => { if (left > 0) setTimeout(() => ask(left - 1), 400); else finish({ ok: false, error: 'content script unavailable' }); });
+      };
+      ask(Math.floor(timeoutMs / 400));
+    });
+  } finally {
+    chrome.tabs.remove(tabId).catch(() => { /* tab 可能已被关闭 */ });
+  }
+}
+
 /* ---------------- 自定义 URL 提取 ---------------- */
+
+/** runApi 用的 fetch：带 15s 超时，REST API（维基百科）/ Web API 挂起时不拖垮提取 */
+const swFetch = (url, opts) => fetchWithTimeout(url, opts, 15000);
 
 async function extractUrl(url) {
   await ensureRules();
@@ -190,9 +240,28 @@ async function extractUrl(url) {
   let fields = null;
   let finalUrl = url;
 
-  // 1) 声明式 API 提取（如网易云音乐 Web API）
+  // 0) 规则声明 render：无头标签页等链接完全重定向并渲染后再捕获（失败退回普通抓取链路）
+  //    render 可为 true 或 { minMs, coverFromDom }：minMs 为最短等待（兜底慢验证跳转），
+  //    coverFromDom 在 og 封面缺失时取正文第一张大图当封面
+  if (rule && rule.render) {
+    const cfg = (typeof rule.render === 'object' && rule.render) || {};
+    const cap = await captureViaTab(url, 24000, cfg.minMs || 0).catch(() => null);
+    if (cap && cap.ok) {
+      finalUrl = cap.url || url;
+      meta.title = cleanMetaText(cap.title).slice(0, 300);
+      meta.description = cleanMetaText(cap.description || '').slice(0, 2000);
+      let cover = cap.coverUrl || (cfg.coverFromDom && cap.firstImage) || null;
+      meta.coverUrl = cover ? absUrl(decodeEntities(cover), finalUrl) : null;
+      meta.faviconCandidates = Array.isArray(cap.faviconCandidates) ? cap.faviconCandidates.slice(0, 6) : [];
+      SimpShareRules.applyTransforms(rule, meta, finalUrl);
+      if (!meta.title) meta.title = finalUrl;
+      return { ok: true, meta: meta };
+    }
+  }
+
+  // 1) 声明式 API 提取（如网易云音乐 Web API / B 站专栏开放 API）
   if (rule && rule.extract && rule.extract.api) {
-    try { fields = await SimpShareRules.runApi(rule, url); } catch (e) { fields = null; }
+    try { fields = await SimpShareRules.runApi(rule, url, swFetch); } catch (e) { fields = null; }
   }
 
   // 2) 抓取 HTML：声明式状态提取（如 __INITIAL_STATE__）→ og 元信息兜底
@@ -216,6 +285,13 @@ async function extractUrl(url) {
       meta.description = g.description || '';
       meta.coverUrl = g.coverUrl || null;
       meta.faviconCandidates = g.faviconCandidates;
+      // coverFromHtml：og 缺失时按规则声明的正则从页面 HTML 抠内容图（如酷安 SSR 页的帖子首图）
+      if (!meta.coverUrl && rule && rule.coverFromHtml) {
+        try {
+          const m = f.html.match(new RegExp(rule.coverFromHtml.pattern));
+          if (m && m[0]) meta.coverUrl = 'https://' + m[0].replace(/^https?:\/\//i, '').replace(/^\/\//, '');
+        } catch (e) { /* 非法 pattern 忽略 */ }
+      }
     }
   } else {
     try { meta.faviconCandidates = [new URL('/favicon.ico', url).href]; } catch (e) { /* ignore */ }
@@ -287,7 +363,7 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
           let fields = null;
           const rule = SimpShareRules.match(msg.url);
           if (rule && rule.extract && rule.extract.api) {
-            try { fields = await SimpShareRules.runApi(rule, msg.url); } catch (e) { fields = null; }
+            try { fields = await SimpShareRules.runApi(rule, msg.url, swFetch); } catch (e) { fields = null; }
           }
           sendResponse({ ok: true, fields: fields });
           break;

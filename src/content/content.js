@@ -585,6 +585,17 @@
         const r = await sendBg({ type: 'RUN_RULE_API', url: src });
         if (r && r.ok && r.fields) mergeFields(base, r.fields);
       }
+      // render.coverFromDom：无 og 封面时取正文第一张大图当封面（本页已渲染，直接扫 DOM）
+      if (rule && rule.render && typeof rule.render === 'object' && rule.render.coverFromDom && !base.coverUrl) {
+        base.coverUrl = firstContentImage();
+      }
+      // coverFromHtml：og 缺失时按规则正则从本页 HTML 抠内容图（如酷安带 ?s= 的 SSR 页）
+      if (rule && rule.coverFromHtml && !base.coverUrl) {
+        try {
+          const m = document.documentElement.innerHTML.match(new RegExp(rule.coverFromHtml.pattern));
+          if (m && m[0]) base.coverUrl = 'https://' + m[0].replace(/^https?:\/\//i, '').replace(/^\/\//, '');
+        } catch (e) { /* 非法 pattern 忽略 */ }
+      }
       SimpShareRules.applyTransforms(rule, base, src);
     } else {
       // 自定义链接：后台抓取 HTML / API 完成提取（含规则变换）
@@ -651,6 +662,91 @@
       if (t === genToken) toast('分享图生成失败：' + (e && e.message || e), true);
     }
   }
+
+  /* ============================ 后台无头捕获（render: true 站点） ============================ */
+
+  /** 快速滚动扫一遍页面（最多 8 屏）触发懒加载，然后回顶等图片加载 */
+  async function scrollSweep() {
+    const step = Math.max(400, window.innerHeight || 800);
+    const max = Math.min(document.body ? document.body.scrollHeight : step, step * 8);
+    for (let y = 0; y <= max; y += step) {
+      window.scrollTo(0, y);
+      await new Promise((r) => setTimeout(r, 350));
+    }
+    window.scrollTo(0, 0);
+    await new Promise((r) => setTimeout(r, 900));
+  }
+
+  /** 正文里第一张加载完成的大图（≥200px），无则 null —— render.coverFromDom 规则的封面兜底。
+   *  头图优先（自身或祖先 class 含 cover/head-img），内容照片（jpg/webp）优先于 UI 素材（png），
+   *  排除头像/logo/图标类，其余按 DOM 顺序 */
+  function firstContentImage() {
+    const BAD = /avatar|logo|icon|sprite|emoji|face|qrcode|头像/i;
+    const HEAD = /cover|head-img|headimg/i;
+    const cands = [];
+    for (const img of document.images) {
+      const w = img.naturalWidth || 0;
+      const src = img.currentSrc || img.src || '';
+      if (w < 200 || !/^https?:/.test(src)) continue;
+      let el = img, head = HEAD.test(String(img.className)), bad = BAD.test(String(img.className));
+      for (let i = 0; i < 4 && el; i++) {
+        const cls = typeof el.className === 'string' ? el.className : '';
+        if (HEAD.test(cls)) head = true;
+        if (BAD.test(cls)) bad = true;
+        el = el.parentElement;
+      }
+      if (!bad) {
+        const photo = /\.(jpg|jpeg|webp)(\?|$)/i.test(src) || /\/bao\/uploaded\//.test(src);
+        cands.push({ src: src, score: (head ? 2 : 0) + (photo ? 1 : 0) });
+      }
+    }
+    if (!cands.length) return null;
+    cands.sort((a, b) => b.score - a.score);   // 稳定排序：头图 > 内容照片 > 其他，同分组内保持 DOM 顺序
+    return cands[0].src;
+  }
+
+  /** 隐藏标签页里等标题/og 稳定（短链 JS 跳转与 SPA 渲染完成后）回报本页元信息；
+   *  minMs：规则声明的最小捕获等待（快照稳定也不早于它收尾，兜底慢验证跳转） */
+  async function capturePageMeta(timeoutMs, minMs) {
+    const collect = () => {
+      const og = ogFromDom();
+      return JSON.stringify({ url: location.href, title: og.title, description: og.description, coverUrl: og.coverUrl });
+    };
+    const start = Date.now();
+    const deadline = start + Math.min(Math.max((timeoutMs || 20000) - 6000, 4000), 16000);
+    let last = collect();
+    let stableSince = start;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 600));
+      const cur = collect();
+      if (cur !== last) { last = cur; stableSince = Date.now(); continue; }
+      if (Date.now() - stableSince >= 2000 && Date.now() - start >= (minMs || 0)) {
+        // 稳定后先滚动一遍触发懒加载（帖子配图多是懒加载，不滚动永远不出现），
+        // 再复核快照：列表页常先出静态标题、数据到达后才改写（如百度网盘）
+        await scrollSweep();
+        if (collect() === last) break;
+        stableSince = Date.now();
+      }
+    }
+    const og = ogFromDom();
+    return {
+      ok: true,
+      url: location.href,
+      title: og.title || '',
+      description: og.description || '',
+      coverUrl: og.coverUrl || null,
+      firstImage: firstContentImage(),
+      faviconCandidates: collectFaviconCandidates()
+    };
+  }
+
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (msg && msg.type === 'SIMPSHARE_CAPTURE') {
+      capturePageMeta(msg.timeout, msg.minMs).then(sendResponse, () => sendResponse({ ok: false, error: 'capture failed' }));
+      return true;   // 异步响应
+    }
+    return false;
+  });
 
   /* ============================ 面板 ============================ */
 

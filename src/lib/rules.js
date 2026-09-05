@@ -68,7 +68,7 @@
   }
 
   /* ---------------- 模板 ----------------
-   * "{路径}" 取值；修饰符：|join '分隔符' |fallback 路径 |clip 数字
+   * "{路径}" 取值；修饰符：|join '分隔符' |fallback 路径 |clip 数字 |first
    * 任一占位符未取到值时 ok=false（用于丢弃"歌手："这类残缺行）
    */
   function isBlank(v) { return v === undefined || v === null || v === ''; }
@@ -92,6 +92,8 @@
             const n = parseInt(arg, 10) || 160;
             if (v.length > n) v = v.slice(0, n) + '…';
           }
+        } else if (mod === 'first') {
+          if (Array.isArray(v)) v = v[0];
         }
       }
       if (isBlank(v)) missing = true;
@@ -244,6 +246,12 @@
         const m = u.hash.match(new RegExp('[?&]' + api.idFrom.name + '=(\\w+)'));
         if (m) id = m[1];
       }
+    } else if (api.idFrom && api.idFrom.type === 'path' && api.idFrom.pattern) {
+      // 从路径（含 query，兼容 /read/mobile?id=cv… 这类“路径即参数”的写法）按捕获组取 id
+      try {
+        const m = (u.pathname + u.search).match(new RegExp(api.idFrom.pattern));
+        if (m && m[1] != null) id = m[1];
+      } catch (e) { /* 非法 pattern 视为未命中 */ }
     }
     if (isBlank(id)) return null;
 
@@ -251,7 +259,12 @@
     const doFetch = fetchFn || global.fetch;
     for (const b of (api.branches || [])) {
       if (b.whenPath && !new RegExp(b.whenPath, 'i').test(pathForMatch)) continue;
-      const apiUrl = applyTemplate(b.url, function (p) { return p === 'id' ? id : undefined; }).text;
+      // URL 模板可用参数：{id} 主键，{host} 当前主机名（如 zh.wikipedia.org 的 REST API）
+      const apiUrl = applyTemplate(b.url, function (p) {
+        if (p === 'id') return id;
+        if (p === 'host') return u.hostname;
+        return undefined;
+      }).text;
       let json;
       try {
         const res = await doFetch(apiUrl, { credentials: 'omit' });
@@ -283,6 +296,19 @@
         const m = u.pathname.match(new RegExp(r.titleFromPath.pattern));
         if (m) {
           meta.title = String(r.titleFromPath.template).replace(/\{(\d+)\}/g, (_, i) => m[i] || '');
+        }
+      } catch (e) { /* ignore */ }
+    }
+    if (r.titleFromQuery && urlStr) {
+      // 从 query 参数组装标题（如 DuckDuckGo 的 q）；模板里 {参数名} 取对应值
+      try {
+        const u = new URL(urlStr);
+        const name = r.titleFromQuery.name;
+        const q = u.searchParams.get(name);
+        if (q && q.trim()) {
+          meta.title = applyTemplate(r.titleFromQuery.template, function (p) {
+            return p === name ? q : u.searchParams.get(p);
+          }).text.trim();
         }
       } catch (e) { /* ignore */ }
     }

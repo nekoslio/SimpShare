@@ -82,6 +82,35 @@ async function checkSite(site, sample) {
     } else if (matched.id === 'youtube') {
       const vd = (extractAssignedObject(html, 'ytInitialPlayerResponse') || {}).videoDetails;
       if (vd) { title = vd.title; cover = (vd.thumbnail || {}).thumbnails && vd.thumbnail.thumbnails.slice(-1)[0].url; desc = (vd.shortDescription || '').slice(0, 80); }
+    } else if (matched.id === 'bilibili-read') {
+      // 专栏壳页无数据，走开放 API（与规则 extract.api 声明一致）
+      const m = sample.match(/\/read\/(?:cv|mobile\?id=cv)?(\d+)/);
+      if (m) {
+        const r2 = await fetch('https://api.bilibili.com/x/article/view?id=' + m[1], { headers: { 'User-Agent': UA } });
+        const d2 = (await r2.json()).data;
+        if (d2 && d2.title) {
+          title = d2.title; cover = d2.banner_url || (d2.image_urls || [])[0] || '';
+          desc = ((d2.author || {}).name ? 'UP主：' + d2.author.name + '\n' : '') + (d2.summary || '').slice(0, 80);
+        }
+      }
+    } else if (matched.id === 'bilibili-opus') {
+      const d = (extractAssignedObject(html, '__INITIAL_STATE__') || {}).detail || {};
+      if (d.basic && d.basic.title) {
+        title = d.basic.title;
+        const texts = [], pics = [];
+        let author = '';
+        for (const mo of (d.modules || [])) {
+          if (mo.module_author && mo.module_author.name) author = mo.module_author.name;
+          for (const pa of ((mo.module_content || {}).paragraphs || [])) {
+            for (const nd of ((pa.text || {}).nodes || [])) {
+              if (nd.word && nd.word.words) texts.push(nd.word.words);
+              if (nd.pic && nd.pic.url) pics.push(nd.pic.url);
+            }
+          }
+        }
+        cover = pics[0] || '';
+        desc = (author ? 'UP主：' + author + '\n' : '') + texts.join('').slice(0, 80);
+      }
     }
     if (!title) title = decodeEntities(metaGet(html, ['og:title', 'twitter:title']));
     if (!cover) cover = metaGet(html, ['og:image', 'og:image:secure_url', 'twitter:image', 'twitter:image:src']);
@@ -148,7 +177,16 @@ const SAMPLES = [
   ['npm', 'https://www.npmjs.com/package/react'],
   ['pypi', 'https://pypi.org/project/requests/'],
   ['arxiv', 'https://arxiv.org/abs/1706.03762'],
-  ['steam', 'https://store.steampowered.com/app/570/Dota_2/']
+  ['steam', 'https://store.steampowered.com/app/570/Dota_2/'],
+  ['bilibili-read', 'https://www.bilibili.com/read/cv24557928/'],
+  ['bilibili-opus', 'https://www.bilibili.com/opus/1242413904246603781'],
+  ['miui-community', 'https://web.vip.miui.com/page/info/mio/mio/detail?isTop=0&postId=52824031'],
+  ['wikipedia', 'https://zh.wikipedia.org/wiki/%E6%B1%AA%E7%B2%BE%E5%8D%AB'],
+  ['coolapk', 'https://www.coolapk.com/feed/73574706'],
+  ['goofish', 'https://www.goofish.com/item?id=839271901390&categoryId=201458416'],
+  ['baidu-pan', 'https://pan.baidu.com/s/1uciNaJBL9xKwP7J1xONevQ?pwd=r5ak'],
+  ['duckduckgo', 'https://duckduckgo.com/?q=%E5%AE%89%E8%B4%B9%E5%A5%A5%E5%88%A9&ia=web'],
+  ['123pan', 'https://1707690.share.123pan.cn/123pan/gxk9-19wGh']
 ];
 
 /* ---- VM 上下文：加载规则解释器与订阅文件（一次） ---- */
