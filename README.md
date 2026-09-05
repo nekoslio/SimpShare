@@ -22,7 +22,7 @@
 | <img src="https://raw.githubusercontent.com/nekoslio/SimpShare/extensions/docs/screenshots/card-github-light.png" width="440"> | <img src="https://raw.githubusercontent.com/nekoslio/SimpShare/extensions/docs/screenshots/card-netease-light.png" width="440"> |
 
 站点适配是声明式的：GitHub、B 站视频/专栏/动态、网易云音乐这类重点站点按页面数据精确提取
-标题、封面和 UP 主 / 歌手信息；小米社区、闲鱼短链、百度网盘分享这类需要等跳转和渲染的
+标题、封面和 UP 主 / 歌手信息；小米社区、闲鱼、京东、淘宝天猫、拼多多、百度网盘分享这类需要等跳转、渲染或登录态的
 站点，两端各用无头 WebView / 隐藏标签页等链接完全重定向后再捕获；其余站点自动读页面
 meta，拿不到封面就退回二维码模式，不会生成一张破图。所有规则都在一份 `rules.json` 里，
 加站点不用写代码，两个端通用。
